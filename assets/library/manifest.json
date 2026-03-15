@@ -1,0 +1,338 @@
+{
+  "version": "2.0.0",
+  "lastUpdated": "2026-03-12",
+  "genres": [
+    {
+      "id": "animals",
+      "name": "Animals",
+      "emoji": "🐾",
+      "description": "Classic animal fables and stories",
+      "color": "#86EFAC"
+    },
+    {
+      "id": "adventure",
+      "name": "Adventure",
+      "emoji": "🗺️",
+      "description": "Exciting journeys and brave explorers",
+      "color": "#FBBF24"
+    },
+    {
+      "id": "bedtime",
+      "name": "Bedtime",
+      "emoji": "🌙",
+      "description": "Calm and cozy stories for sweet dreams",
+      "color": "#C4B5FD"
+    },
+    {
+      "id": "science",
+      "name": "Science",
+      "emoji": "🔬",
+      "description": "Discover the wonders of our world",
+      "color": "#7DD3FC"
+    },
+    {
+      "id": "values",
+      "name": "Values",
+      "emoji": "💝",
+      "description": "Stories about kindness, honesty, and friendship",
+      "color": "#FDA4AF"
+    },
+    {
+      "id": "fantasy",
+      "name": "Fantasy",
+      "emoji": "✨",
+      "description": "Magical worlds and enchanted creatures",
+      "color": "#D8B4FE"
+    }
+  ],
+  "stories": [
+    {
+      "id": "animal-001",
+      "title": "The Tortoise and the Hare",
+      "genre": "animals",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🐢",
+      "preview": "One day, a hare saw a tortoise walking slowly down the road.",
+      "contentFile": "animal-001.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "animal-002",
+      "title": "The Lion and the Mouse",
+      "genre": "animals",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🦁",
+      "preview": "A little mouse ran over a sleeping lion.",
+      "contentFile": "animal-002.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "animal-003",
+      "title": "The Tale of Peter Rabbit",
+      "genre": "animals",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🐰",
+      "preview": "Once upon a time there were four little rabbits.",
+      "contentFile": "animal-003.json",
+      "author": "Beatrix Potter"
+    },
+    {
+      "id": "animal-004",
+      "title": "The Town Mouse and the Country Mouse",
+      "genre": "animals",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🐭",
+      "preview": "A Town Mouse once visited a cousin who lived in the country.",
+      "contentFile": "animal-004.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "animal-005",
+      "title": "The Ugly Duckling",
+      "genre": "animals",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "🦢",
+      "preview": "A duck sat on her nest, waiting for her eggs to hatch.",
+      "contentFile": "animal-005.json",
+      "author": "Hans Christian Andersen"
+    },
+    {
+      "id": "animal-006",
+      "title": "The Fox and the Grapes",
+      "genre": "animals",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🦊",
+      "preview": "One hot day, a fox was walking through a garden.",
+      "contentFile": "animal-006.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "bedtime-001",
+      "title": "Twinkle, Twinkle, Little Star",
+      "genre": "bedtime",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "⭐",
+      "preview": "Twinkle, twinkle, little star, how I wonder what you are!",
+      "contentFile": "bedtime-001.json",
+      "author": "Jane Taylor"
+    },
+    {
+      "id": "bedtime-002",
+      "title": "The Night the Moon Fell Asleep",
+      "genre": "bedtime",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🌙",
+      "preview": "Once the moon stayed up too late.",
+      "contentFile": "bedtime-002.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "bedtime-003",
+      "title": "Wynken, Blynken, and Nod",
+      "genre": "bedtime",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🚣",
+      "preview": "Wynken, Blynken, and Nod one night sailed off in a wooden shoe.",
+      "contentFile": "bedtime-003.json",
+      "author": "Eugene Field"
+    },
+    {
+      "id": "bedtime-004",
+      "title": "The Sugar-Plum Tree",
+      "genre": "bedtime",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🍬",
+      "preview": "Have you ever heard of the Sugar-Plum Tree?",
+      "contentFile": "bedtime-004.json",
+      "author": "Eugene Field"
+    },
+    {
+      "id": "fantasy-001",
+      "title": "The Three Little Pigs",
+      "genre": "fantasy",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 3,
+      "emoji": "🐷",
+      "preview": "Once there were three little pigs.",
+      "contentFile": "fantasy-001.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "fantasy-002",
+      "title": "Goldilocks and the Three Bears",
+      "genre": "fantasy",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 3,
+      "emoji": "🐻",
+      "preview": "Once upon a time, three bears lived in a house in the woods.",
+      "contentFile": "fantasy-002.json",
+      "author": "Robert Southey"
+    },
+    {
+      "id": "fantasy-003",
+      "title": "Little Red Riding Hood",
+      "genre": "fantasy",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🧒",
+      "preview": "Once upon a time there was a dear little girl.",
+      "contentFile": "fantasy-003.json",
+      "author": "Brothers Grimm"
+    },
+    {
+      "id": "fantasy-004",
+      "title": "Thumbelina",
+      "genre": "fantasy",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "🌷",
+      "preview": "There was once a woman who wished very much to have a little child.",
+      "contentFile": "fantasy-004.json",
+      "author": "Hans Christian Andersen"
+    },
+    {
+      "id": "adventure-001",
+      "title": "Jack and the Beanstalk",
+      "genre": "adventure",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🌱",
+      "preview": "Once upon a time there lived a poor widow and her son Jack.",
+      "contentFile": "adventure-001.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "adventure-002",
+      "title": "The Little Engine That Could",
+      "genre": "adventure",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 3,
+      "emoji": "🚂",
+      "preview": "A little train full of toys was going over a mountain.",
+      "contentFile": "adventure-002.json",
+      "author": "Watty Piper"
+    },
+    {
+      "id": "adventure-003",
+      "title": "The Brave Tin Soldier",
+      "genre": "adventure",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "🎖️",
+      "preview": "There were once five and twenty tin soldiers, all brothers.",
+      "contentFile": "adventure-003.json",
+      "author": "Hans Christian Andersen"
+    },
+    {
+      "id": "values-001",
+      "title": "The Boy Who Cried Wolf",
+      "genre": "values",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🐺",
+      "preview": "There once was a boy who watched sheep.",
+      "contentFile": "values-001.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "values-002",
+      "title": "The Ant and the Grasshopper",
+      "genre": "values",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🐜",
+      "preview": "One summer day, a grasshopper was hopping about.",
+      "contentFile": "values-002.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "values-003",
+      "title": "The Golden Rule",
+      "genre": "values",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "💛",
+      "preview": "Once there was a village where people were not very kind.",
+      "contentFile": "values-003.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "values-004",
+      "title": "The Good Samaritan",
+      "genre": "values",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🤝",
+      "preview": "A teacher once asked, 'What is the most important rule?'",
+      "contentFile": "values-004.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "science-001",
+      "title": "Why the Sky is Blue",
+      "genre": "science",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🌤️",
+      "preview": "Have you ever looked up at the sky?",
+      "contentFile": "science-001.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-002",
+      "title": "The Water Cycle",
+      "genre": "science",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "💧",
+      "preview": "Water is always moving around our Earth.",
+      "contentFile": "science-002.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-003",
+      "title": "How Seeds Grow",
+      "genre": "science",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🌱",
+      "preview": "Every great tree starts as a tiny seed.",
+      "contentFile": "science-003.json",
+      "author": "Educational"
+    }
+  ]
+}

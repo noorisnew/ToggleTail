@@ -8,6 +8,7 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
+    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -18,79 +19,23 @@ import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../constants
 import { generateStory, getStorySuggestions, StorySuggestion } from '../src/data/api/storyApi';
 import { ChildProfile, getProfile } from '../src/data/storage/profileStorage';
 import { addStory } from '../src/data/storage/storyStorage';
+import { generateLocalStory, StoryLength } from '../src/domain/services/storyCreationService';
 
-// Story templates for AI generation
-const storyTemplates = {
-  intros: [
-    'Once upon a time, in a magical land far away,',
-    'In a cozy little village surrounded by tall mountains,',
-    'Long ago, in a forest filled with wonder,',
-    'In a bright and sunny meadow,',
-    'Deep in an enchanted kingdom,',
-  ],
-  characters: [
-    'a brave little {animal} named {name}',
-    'a curious young {animal} called {name}',
-    'a kind-hearted {animal} known as {name}',
-    'a clever little {animal} named {name}',
-    'a friendly {animal} called {name}',
-  ],
-  animals: ['rabbit', 'fox', 'bear', 'owl', 'deer', 'mouse', 'squirrel', 'hedgehog'],
-  problems: [
-    'lost their way in the deep, dark woods',
-    'discovered that their favorite tree had fallen down',
-    'found a friend who was feeling very sad',
-    'noticed that the village well had run dry',
-    'realized they had forgotten something very important',
-  ],
-  solutions: [
-    'With courage and determination, {name} decided to help.',
-    '{name} thought carefully and came up with a brilliant plan.',
-    'Using kindness and patience, {name} found a way.',
-    '{name} asked friends for help, and together they worked.',
-    'With a brave heart, {name} faced the challenge head-on.',
-  ],
-  morals: [
-    'And from that day on, everyone learned that kindness can solve any problem.',
-    'The end! And the lesson was: true friends always help each other.',
-    'And so, {name} discovered that being brave means trying even when you\'re scared.',
-    'From then on, everyone remembered: working together makes everything possible.',
-    'And they all lived happily, knowing that patience and love conquer all.',
-  ],
-};
+// Story themes
+const STORY_THEMES = [
+  { id: 'forest', name: 'Forest', emoji: '🌲' },
+  { id: 'space', name: 'Space', emoji: '🚀' },
+  { id: 'castle', name: 'Castle', emoji: '🏰' },
+  { id: 'ocean', name: 'Ocean', emoji: '🌊' },
+];
 
-const pickRandom = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-
-const generateStoryFromTitle = (title: string): string => {
-  const titleLower = title.toLowerCase();
-  const words = titleLower.split(/\s+/);
-  
-  // Try to extract a name from title, or generate one
-  const possibleNames = ['Luna', 'Oliver', 'Maple', 'Finn', 'Rosie', 'Pip', 'Hazel', 'Theo'];
-  let characterName = possibleNames.find(n => titleLower.includes(n.toLowerCase())) || pickRandom(possibleNames);
-  
-  // Try to match animal from title, or pick random
-  let animal = storyTemplates.animals.find(a => titleLower.includes(a)) || pickRandom(storyTemplates.animals);
-  
-  const intro = pickRandom(storyTemplates.intros);
-  const characterTemplate = pickRandom(storyTemplates.characters)
-    .replace('{animal}', animal)
-    .replace('{name}', characterName);
-  const problem = pickRandom(storyTemplates.problems);
-  const solution = pickRandom(storyTemplates.solutions).replace(/{name}/g, characterName);
-  const moral = pickRandom(storyTemplates.morals).replace(/{name}/g, characterName);
-  
-  // Build the story
-  const story = `${intro} there lived ${characterTemplate}.
-
-One day, ${characterName} ${problem}. It seemed like a very big problem indeed!
-
-${solution} After thinking hard and trying their best, things started to get better.
-
-${moral}`;
-  
-  return story;
-};
+// AI Agents
+const AI_AGENTS = [
+  { id: 'creative', name: 'Creative', emoji: '🎨' },
+  { id: 'educational', name: 'Educational', emoji: '📚' },
+  { id: 'adventurous', name: 'Adventurous', emoji: '⚔️' },
+  { id: 'calming', name: 'Calming', emoji: '🌙' },
+];
 
 export default function StoryCreateScreen() {
   const router = useRouter();
@@ -101,6 +46,24 @@ export default function StoryCreateScreen() {
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [suggestions, setSuggestions] = useState<StorySuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  
+  // Story creation options
+  const [selectedTheme, setSelectedTheme] = useState('forest');
+  const [selectedAgent, setSelectedAgent] = useState('creative');
+  const [mainCharacter, setMainCharacter] = useState('');
+  const [specialCharacters, setSpecialCharacters] = useState('');
+  const [storyContext, setStoryContext] = useState('');
+  const [storyLength, setStoryLength] = useState<StoryLength>('Medium');
+  const [includeChild, setIncludeChild] = useState(true);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+// Popular kid-friendly emojis for story creation
+const STORY_EMOJIS = [
+  '🦁', '🐻', '🐰', '🦊', '🐼', '🐶', '🐱', '🦄',
+  '🌟', '✨', '🌈', '🌸', '🌺', '🎈', '🎁', '🎪',
+  '🏰', '🚀', '🎠', '⛵', '🌲', '🏔️', '🌊', '🌙',
+  '👑', '🧙', '🧚', '🤴', '👸', '🦸', '🐉', '🦋',
+];
 
   useEffect(() => {
     loadProfile();
@@ -124,28 +87,58 @@ export default function StoryCreateScreen() {
   const handleGenerateAIDraft = async () => {
     setGenerating(true);
     
+    const theme = STORY_THEMES.find(t => t.id === selectedTheme);
+    const agent = AI_AGENTS.find(a => a.id === selectedAgent);
+    
     try {
       const result = await generateStory({
-        childName: profile?.name || 'little reader',
+        childName: includeChild && profile?.name ? profile.name : undefined,
         age: profile?.age || 5,
         readingLevel: profile?.readingLevel || 'Beginner',
-        interests: profile?.interests || [],
+        interests: [theme?.name || 'Adventure'],
         title: title.trim() || undefined,
+        theme: theme?.name,
+        mainCharacter: mainCharacter || undefined,
+        specialCharacters: specialCharacters || undefined,
+        storyContext: storyContext || undefined,
+        storyLength: storyLength,
+        agentStyle: agent?.id,
       });
 
-      if (result.success) {
+      if (result.success && result.text) {
         if (!title.trim()) {
           setTitle(result.title);
         }
         setText(result.text);
       } else {
-        Alert.alert('Error', result.error || 'Could not generate story.');
+        // API failed - use local generation via service
+        const localText = generateLocalStory({
+          title: title || 'A Magical Adventure',
+          childName: includeChild ? profile?.name : undefined,
+          theme: selectedTheme,
+          mainCharacter: mainCharacter || undefined,
+          length: storyLength,
+        });
+        if (!title.trim()) {
+          setTitle('A Magical Adventure');
+        }
+        setText(localText);
+        Alert.alert('Offline Mode', 'Generated story locally. You can edit it below!');
       }
     } catch (error) {
-      // Fallback to local generation
-      const draft = generateStoryFromTitle(title || 'A Magical Adventure');
-      setText(draft);
-      Alert.alert('Offline Mode', 'Generated story locally.');
+      // Fallback to local generation via service
+      const localText = generateLocalStory({
+        title: title || 'A Magical Adventure',
+        childName: includeChild ? profile?.name : undefined,
+        theme: selectedTheme,
+        mainCharacter: mainCharacter || undefined,
+        length: storyLength,
+      });
+      if (!title.trim()) {
+        setTitle('A Magical Adventure');
+      }
+      setText(localText);
+      Alert.alert('Offline Mode', 'Generated story locally. You can edit it below!');
     } finally {
       setGenerating(false);
     }
@@ -165,13 +158,16 @@ export default function StoryCreateScreen() {
       return;
     }
 
+    const theme = STORY_THEMES.find(t => t.id === selectedTheme);
+    
     setSaving(true);
     const result = await addStory({
       title: title.trim(),
       text: text.trim(),
-      approved: false,
-      difficulty: 'Easy',
-      tags: [],
+      approved: true, // Parent-created stories are visible immediately
+      difficulty: storyLength === 'Short' ? 'Easy' : storyLength === 'Long' ? 'Hard' : 'Medium',
+      tags: [theme?.name || 'Adventure'],
+      theme: theme?.name,
     });
     if (result) {
       router.replace('/parent-home');
@@ -227,6 +223,156 @@ export default function StoryCreateScreen() {
               onChangeText={setTitle}
               maxLength={100}
             />
+          </View>
+
+          {/* Include Child Toggle */}
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>Include {profile?.name || 'child'} in story</Text>
+            <Switch
+              value={includeChild}
+              onValueChange={setIncludeChild}
+              trackColor={{ false: '#e5e7eb', true: Colors.primaryStart }}
+              thumbColor="#fff"
+            />
+          </View>
+
+          {/* Story Theme */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Story Theme</Text>
+            <View style={styles.optionsRow}>
+              {STORY_THEMES.map((theme) => (
+                <TouchableOpacity
+                  key={theme.id}
+                  style={[
+                    styles.optionButton,
+                    selectedTheme === theme.id && styles.optionButtonActive,
+                  ]}
+                  onPress={() => setSelectedTheme(theme.id)}
+                >
+                  <Text style={styles.optionEmoji}>{theme.emoji}</Text>
+                  <Text style={[
+                    styles.optionText,
+                    selectedTheme === theme.id && styles.optionTextActive,
+                  ]}>{theme.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* AI Agent */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Story Style</Text>
+            <View style={styles.optionsRow}>
+              {AI_AGENTS.map((agent) => (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={[
+                    styles.optionButton,
+                    selectedAgent === agent.id && styles.optionButtonActive,
+                  ]}
+                  onPress={() => setSelectedAgent(agent.id)}
+                >
+                  <Text style={styles.optionEmoji}>{agent.emoji}</Text>
+                  <Text style={[
+                    styles.optionText,
+                    selectedAgent === agent.id && styles.optionTextActive,
+                  ]}>{agent.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Main Character */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Main Character (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., A brave little bear"
+              placeholderTextColor={Colors.textMuted}
+              value={mainCharacter}
+              onChangeText={setMainCharacter}
+              maxLength={50}
+            />
+          </View>
+
+          {/* Special Characters */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Other Characters (optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g., A wise owl, a playful bunny"
+              placeholderTextColor={Colors.textMuted}
+              value={specialCharacters}
+              onChangeText={setSpecialCharacters}
+              maxLength={100}
+            />
+            <Text style={styles.inputHint}>Add friends, pets, or companions for the adventure</Text>
+          </View>
+
+          {/* Story Context */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Story Details (optional)</Text>
+            <TextInput
+              style={[styles.input, styles.contextArea]}
+              placeholder="Add any special details... e.g., 'Include a lesson about sharing' or 'Set it during winter'"
+              placeholderTextColor={Colors.textMuted}
+              value={storyContext}
+              onChangeText={setStoryContext}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              maxLength={200}
+            />
+          </View>
+
+          {/* Emoji Picker */}
+          <View style={styles.inputContainer}>
+            <TouchableOpacity
+              style={styles.emojiToggle}
+              onPress={() => setShowEmojiPicker(!showEmojiPicker)}
+            >
+              <Text style={styles.inputLabel}>Add Fun Emojis ✨</Text>
+              <Text style={styles.emojiToggleIcon}>{showEmojiPicker ? '▼' : '▶'}</Text>
+            </TouchableOpacity>
+            {showEmojiPicker && (
+              <View style={styles.emojiGrid}>
+                {STORY_EMOJIS.map((emoji, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.emojiButton}
+                    onPress={() => setStoryContext(prev => prev + ' ' + emoji)}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={styles.emojiText}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {showEmojiPicker && (
+              <Text style={styles.inputHint}>Tap an emoji to add it to Story Details</Text>
+            )}
+          </View>
+
+          {/* Story Length */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Story Length</Text>
+            <View style={styles.lengthRow}>
+              {(['Short', 'Medium', 'Long'] as const).map((length) => (
+                <TouchableOpacity
+                  key={length}
+                  style={[
+                    styles.lengthButton,
+                    storyLength === length && styles.lengthButtonActive,
+                  ]}
+                  onPress={() => setStoryLength(length)}
+                >
+                  <Text style={[
+                    styles.lengthText,
+                    storyLength === length && styles.lengthTextActive,
+                  ]}>{length}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
 
           <TouchableOpacity
@@ -412,5 +558,116 @@ const styles = StyleSheet.create({
     color: Colors.textAccent,
     fontSize: Typography.sizes.body,
     fontWeight: Typography.weights.medium,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  toggleLabel: {
+    fontSize: Typography.sizes.body,
+    color: Colors.textPrimary,
+    fontWeight: Typography.weights.medium,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  optionButton: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.button,
+    borderWidth: 2,
+    borderColor: Colors.borderCard,
+    backgroundColor: Colors.cardBackground,
+    minWidth: 70,
+  },
+  optionButtonActive: {
+    borderColor: Colors.primaryStart,
+    backgroundColor: '#f3e8ff',
+  },
+  optionEmoji: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  optionText: {
+    fontSize: Typography.sizes.small,
+    color: Colors.textSecondary,
+  },
+  optionTextActive: {
+    color: Colors.primaryStart,
+    fontWeight: Typography.weights.semibold,
+  },
+  lengthRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  lengthButton: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.button,
+    borderWidth: 2,
+    borderColor: Colors.borderCard,
+    backgroundColor: Colors.cardBackground,
+    alignItems: 'center',
+  },
+  lengthButtonActive: {
+    borderColor: Colors.primaryStart,
+    backgroundColor: '#f3e8ff',
+  },
+  lengthText: {
+    fontSize: Typography.sizes.body,
+    color: Colors.textSecondary,
+  },
+  lengthTextActive: {
+    color: Colors.primaryStart,
+    fontWeight: Typography.weights.semibold,
+  },
+  inputHint: {
+    fontSize: Typography.sizes.small,
+    color: Colors.textMuted,
+    marginTop: Spacing.xs,
+    fontStyle: 'italic',
+  },
+  contextArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  emojiToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  emojiToggleIcon: {
+    fontSize: Typography.sizes.small,
+    color: Colors.textMuted,
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: Spacing.sm,
+    backgroundColor: '#fef3c7',
+    borderRadius: BorderRadius.button,
+  },
+  emojiButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.cardBackground,
+    borderRadius: BorderRadius.button,
+    borderWidth: 1,
+    borderColor: Colors.borderCard,
+  },
+  emojiText: {
+    fontSize: 22,
   },
 });

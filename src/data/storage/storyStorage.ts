@@ -20,9 +20,11 @@ export type Story = {
 /**
  * Normalize a story object to ensure all fields exist with defaults
  * Provides backwards compatibility for older stored stories
+ * Preserves extra fields (like preloaded metadata) via spread
  */
-function normalizeStory(raw: Partial<Story>): Story {
+function normalizeStory<T extends Partial<Story>>(raw: T): Story & Omit<T, keyof Story> {
   return {
+    ...raw, // preserve extra fields like preloaded metadata
     id: raw.id ?? Date.now().toString(),
     title: raw.title ?? '',
     text: raw.text ?? '',
@@ -122,5 +124,20 @@ export async function updateStory(
   } catch (error) {
     console.error('updateStory:', normalizeError(error));
     return null;
+  }
+}
+
+/**
+ * Save all stories (full replacement)
+ * Used by services that need batch updates (e.g., approval service)
+ * Returns true on success, false on failure (never throws)
+ */
+export async function saveStories(stories: Story[]): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(STORIES_KEY, JSON.stringify(stories));
+    return true;
+  } catch (error) {
+    console.error('saveStories:', normalizeError(error));
+    return false;
   }
 }

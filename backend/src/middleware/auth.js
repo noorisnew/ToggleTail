@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Parent = require('../models/Parent');
-
+/**JSON Web Token (JWT) implementation */
 const JWT_SECRET = process.env.JWT_SECRET || 'toggletail-dev-secret-change-in-production';
 const JWT_EXPIRES_IN = '7d';
 

@@ -11,20 +11,33 @@ import {
 } from 'react-native';
 import { Colors, Shadows, Spacing } from '../constants/design';
 import { signOut } from '../src/data/storage/authStorage';
-import { getNarrationMode, NarrationMode, setNarrationMode } from '../src/data/storage/narrationStorage';
-import { deleteStory, getStories, Story, updateStory } from '../src/data/storage/storyStorage';
+import {
+    AI_VOICE_OPTIONS,
+    AIVoiceId,
+    getNarrationSettings,
+    NarrationMode,
+    NarrationSettings,
+    ParentVoiceLabel,
+    saveNarrationSettings,
+} from '../src/data/storage/narrationStorage';
+import { deleteStory, getStories, Story } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
+import { approveStory, removeApproval } from '../src/domain/services/storyApprovalService';
 
 export default function ParentHomeScreen() {
   const router = useRouter();
   const [stories, setStories] = useState<Story[]>([]);
-  const [narrationMode, setNarrationModeState] = useState<NarrationMode>('AI');
+  const [narrationSettings, setNarrationSettingsState] = useState<NarrationSettings>({
+    preferredSource: 'AI',
+    aiVoiceId: 'Rachel',
+    parentVoiceLabel: 'Parent',
+  });
 
-  // Reload stories and narration mode when screen comes into focus
+  // Reload stories and narration settings when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadStories();
-      loadNarrationMode();
+      loadNarrationSettings();
     }, [])
   );
 
@@ -38,23 +51,46 @@ export default function ParentHomeScreen() {
     }
   };
 
-  const loadNarrationMode = async () => {
+  const loadNarrationSettings = async () => {
     try {
-      const mode = await getNarrationMode();
-      setNarrationModeState(mode);
+      const settings = await getNarrationSettings();
+      setNarrationSettingsState(settings);
     } catch (error) {
-      console.error('loadNarrationMode:', normalizeError(error));
+      console.error('loadNarrationSettings:', normalizeError(error));
       Alert.alert('Error', 'Could not load narration settings.');
     }
   };
 
   const handleSetNarrationMode = async (mode: NarrationMode) => {
     try {
-      await setNarrationMode(mode);
-      setNarrationModeState(mode);
+      const newSettings = { ...narrationSettings, preferredSource: mode };
+      await saveNarrationSettings(newSettings);
+      setNarrationSettingsState(newSettings);
     } catch (error) {
       console.error('handleSetNarrationMode:', normalizeError(error));
       Alert.alert('Error', 'Could not save narration mode. Please try again.');
+    }
+  };
+
+  const handleSetAIVoice = async (voiceId: AIVoiceId) => {
+    try {
+      const newSettings = { ...narrationSettings, aiVoiceId: voiceId };
+      await saveNarrationSettings(newSettings);
+      setNarrationSettingsState(newSettings);
+    } catch (error) {
+      console.error('handleSetAIVoice:', normalizeError(error));
+      Alert.alert('Error', 'Could not save voice selection.');
+    }
+  };
+
+  const handleSetParentVoiceLabel = async (label: ParentVoiceLabel) => {
+    try {
+      const newSettings = { ...narrationSettings, parentVoiceLabel: label };
+      await saveNarrationSettings(newSettings);
+      setNarrationSettingsState(newSettings);
+    } catch (error) {
+      console.error('handleSetParentVoiceLabel:', normalizeError(error));
+      Alert.alert('Error', 'Could not save voice label.');
     }
   };
 
@@ -77,11 +113,15 @@ export default function ParentHomeScreen() {
   };
 
   const handleToggleApproval = async (story: Story) => {
-    const result = await updateStory(story.id, { approved: !story.approved });
-    if (result) {
+    // Use storyApprovalService for consistent approval management
+    const result = story.approved 
+      ? await removeApproval(story.id)
+      : await approveStory(story.id);
+    
+    if (result.success) {
       loadStories();
     } else {
-      Alert.alert('Error', 'Could not update story approval.');
+      Alert.alert('Error', result.error || 'Could not update story approval.');
     }
   };
 
@@ -123,14 +163,16 @@ export default function ParentHomeScreen() {
         </View>
 
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Narration Mode Toggle */}
+          {/* Narration Setup Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>🎙️ Narration Mode</Text>
+            <Text style={styles.sectionTitle}>🎙️ Narration Setup</Text>
+            
+            {/* Source Toggle */}
             <View style={styles.narrationButtons}>
               <TouchableOpacity
                 style={[
                   styles.modeButton,
-                  narrationMode === 'AI' && styles.modeButtonActive,
+                  narrationSettings.preferredSource === 'AI' && styles.modeButtonActive,
                 ]}
                 onPress={() => handleSetNarrationMode('AI')}
               >
@@ -138,7 +180,7 @@ export default function ParentHomeScreen() {
                 <Text
                   style={[
                     styles.modeButtonText,
-                    narrationMode === 'AI' && styles.modeButtonTextActive,
+                    narrationSettings.preferredSource === 'AI' && styles.modeButtonTextActive,
                   ]}
                 >
                   AI Voice
@@ -147,7 +189,7 @@ export default function ParentHomeScreen() {
               <TouchableOpacity
                 style={[
                   styles.modeButton,
-                  narrationMode === 'Human' && styles.modeButtonActive,
+                  narrationSettings.preferredSource === 'Human' && styles.modeButtonActive,
                 ]}
                 onPress={() => handleSetNarrationMode('Human')}
               >
@@ -155,40 +197,90 @@ export default function ParentHomeScreen() {
                 <Text
                   style={[
                     styles.modeButtonText,
-                    narrationMode === 'Human' && styles.modeButtonTextActive,
+                    narrationSettings.preferredSource === 'Human' && styles.modeButtonTextActive,
                   ]}
                 >
                   Your Voice
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* AI Voice Selection (shown when AI mode selected) */}
+            {narrationSettings.preferredSource === 'AI' && (
+              <View style={styles.voiceSelectionContainer}>
+                <Text style={styles.voiceSelectionLabel}>Choose AI Voice:</Text>
+                <View style={styles.voiceOptions}>
+                  {AI_VOICE_OPTIONS.map((voice) => (
+                    <TouchableOpacity
+                      key={voice.id}
+                      style={[
+                        styles.voiceOption,
+                        narrationSettings.aiVoiceId === voice.id && styles.voiceOptionActive,
+                      ]}
+                      onPress={() => handleSetAIVoice(voice.id)}
+                    >
+                      <Text style={styles.voiceOptionEmoji}>{voice.emoji}</Text>
+                      <Text style={[
+                        styles.voiceOptionName,
+                        narrationSettings.aiVoiceId === voice.id && styles.voiceOptionNameActive,
+                      ]}>{voice.name}</Text>
+                      <Text style={styles.voiceOptionDesc}>{voice.description}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Parent Voice Label (shown when Human mode selected) */}
+            {narrationSettings.preferredSource === 'Human' && (
+              <View style={styles.voiceSelectionContainer}>
+                <Text style={styles.voiceSelectionLabel}>Voice Label:</Text>
+                <View style={styles.voiceOptions}>
+                  {(['Mom', 'Dad', 'Parent'] as ParentVoiceLabel[]).map((label) => (
+                    <TouchableOpacity
+                      key={label}
+                      style={[
+                        styles.voiceOption,
+                        narrationSettings.parentVoiceLabel === label && styles.voiceOptionActive,
+                      ]}
+                      onPress={() => handleSetParentVoiceLabel(label)}
+                    >
+                      <Text style={styles.voiceOptionEmoji}>
+                        {label === 'Mom' ? '👩' : label === 'Dad' ? '👨' : '👤'}
+                      </Text>
+                      <Text style={[
+                        styles.voiceOptionName,
+                        narrationSettings.parentVoiceLabel === label && styles.voiceOptionNameActive,
+                      ]}>{label}'s Voice</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
 
-          {/* Quick Actions */}
+          {/* Create Story - Primary Feature */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => router.push('/story-create')}
-                activeOpacity={0.8}
+            <Text style={styles.sectionTitle}>✨ Create</Text>
+            <TouchableOpacity
+              style={styles.createStoryButton}
+              onPress={() => router.push('/story-create')}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={[Colors.primaryStart, Colors.primaryEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.createStoryGradient}
               >
-                <LinearGradient
-                  colors={[Colors.primaryStart, Colors.primaryEnd]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.addButtonGradient}
-                >
-                  <Text style={styles.addButtonText}>+ Add Story</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.logsButton}
-                onPress={() => router.push('/logs')}
-              >
-                <Text style={styles.logsButtonText}>📊 View Logs</Text>
-              </TouchableOpacity>
-            </View>
+                <Text style={styles.createStoryEmoji}>📖</Text>
+                <View style={styles.createStoryTextContainer}>
+                  <Text style={styles.createStoryTitle}>Create Your Own Story</Text>
+                  <Text style={styles.createStorySubtitle}>Personalized stories for your child</Text>
+                </View>
+                <Text style={styles.createStoryArrow}>→</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
 
           {/* Stories List */}
@@ -198,7 +290,7 @@ export default function ParentHomeScreen() {
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyEmoji}>📝</Text>
                 <Text style={styles.emptyText}>No stories yet</Text>
-                <Text style={styles.emptySubtext}>Tap "Add Story" to create one!</Text>
+                <Text style={styles.emptySubtext}>Create your first story above!</Text>
               </View>
             ) : (
               stories.map((item) => (
@@ -245,6 +337,27 @@ export default function ParentHomeScreen() {
                 </View>
               ))
             )}
+          </View>
+
+          {/* Settings & Logs - Secondary Actions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>⚙️ More</Text>
+            <View style={styles.secondaryActions}>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => router.push('/parent-settings')}
+              >
+                <Text style={styles.secondaryButtonEmoji}>⚙️</Text>
+                <Text style={styles.secondaryButtonText}>Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => router.push('/logs')}
+              >
+                <Text style={styles.secondaryButtonEmoji}>📊</Text>
+                <Text style={styles.secondaryButtonText}>View Logs</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
 
@@ -390,6 +503,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  settingsButton: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#C4B5FD',
+  },
+  settingsButtonText: {
+    color: '#7C3AED',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: Spacing.xxl,
@@ -532,5 +660,108 @@ const styles = StyleSheet.create({
   },
   debugButtonText: {
     fontSize: 16,
+  },
+  // Voice Selection Styles
+  voiceSelectionContainer: {
+    marginTop: Spacing.md,
+    padding: Spacing.md,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+  },
+  voiceSelectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+  },
+  voiceOptions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  voiceOption: {
+    flex: 1,
+    padding: Spacing.sm,
+    borderRadius: 10,
+    backgroundColor: Colors.backgroundInput,
+    borderWidth: 2,
+    borderColor: Colors.borderInput,
+    alignItems: 'center',
+  },
+  voiceOptionActive: {
+    borderColor: Colors.primaryStart,
+    backgroundColor: '#f3e8ff',
+  },
+  voiceOptionEmoji: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  voiceOptionName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  voiceOptionNameActive: {
+    color: Colors.primaryStart,
+  },
+  voiceOptionDesc: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  // Create Story Button Styles
+  createStoryButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  createStoryGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  createStoryEmoji: {
+    fontSize: 32,
+  },
+  createStoryTextContainer: {
+    flex: 1,
+  },
+  createStoryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  createStorySubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  createStoryArrow: {
+    fontSize: 20,
+    color: '#fff',
+  },
+  // Secondary Actions Styles
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  secondaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    backgroundColor: Colors.backgroundInput,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.borderInput,
+    gap: Spacing.sm,
+  },
+  secondaryButtonEmoji: {
+    fontSize: 16,
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textSecondary,
   },
 });

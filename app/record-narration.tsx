@@ -12,6 +12,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { getStoryById } from '../src/data/api/storyApi';
+import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
+import { getStories } from '../src/data/storage/storyStorage';
+import { normalizeError } from '../src/domain/services/errorService';
 import {
     cancelRecording,
     formatDuration,
@@ -21,11 +25,7 @@ import {
     startRecording,
     stopPlayback,
     stopRecording,
-} from '../src/data/api/narrationService';
-import { getStoryById } from '../src/data/api/storyApi';
-import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
-import { getStories } from '../src/data/storage/storyStorage';
-import { normalizeError } from '../src/domain/services/errorService';
+} from '../src/services/narrationService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

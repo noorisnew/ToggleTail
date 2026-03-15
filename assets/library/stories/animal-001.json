@@ -1,0 +1,22 @@
+{
+  "id": "animal-001",
+  "title": "The Tortoise and the Hare",
+  "readingLevel": "Beginner",
+  "content": "One day, a hare saw a tortoise walking slowly down the road.\n\n\"You are so slow!\" laughed the hare. \"I am the fastest animal around!\"\n\nThe tortoise smiled. \"Let's have a race,\" he said.\n\nThe hare laughed again. \"A race? You will lose!\"\n\nThey started to race. The hare ran very fast. Soon, he was far ahead.\n\n\"I am so fast,\" said the hare. \"I will take a little nap.\"\n\nThe hare lay down under a tree and fell asleep.\n\nThe tortoise kept walking. Slow and steady. Step by step.\n\nWhen the hare woke up, he saw the tortoise near the finish line!\n\nThe hare ran as fast as he could. But it was too late.\n\nThe tortoise won the race!\n\n\"Slow and steady wins the race,\" said the tortoise.\n\nThe End.",
+  "pages": [
+    "One day, a hare saw a tortoise walking slowly down the road.\n\n\"You are so slow!\" laughed the hare. \"I am the fastest animal around!\"",
+    "The tortoise smiled. \"Let's have a race,\" he said.\n\nThe hare laughed again. \"A race? You will lose!\"",
+    "They started to race. The hare ran very fast. Soon, he was far ahead.\n\n\"I am so fast,\" said the hare. \"I will take a little nap.\"",
+    "The hare lay down under a tree and fell asleep.\n\nThe tortoise kept walking. Slow and steady. Step by step.",
+    "When the hare woke up, he saw the tortoise near the finish line!\n\nThe hare ran as fast as he could. But it was too late.\n\nThe tortoise won the race!",
+    "\"Slow and steady wins the race,\" said the tortoise.\n\nThe End."
+  ],
+  "wordCount": 180,
+  "author": "Aesop",
+  "attribution": {
+    "author": "Aesop",
+    "source": "Aesop's Fables",
+    "license": "Public Domain",
+    "sourceUrl": "https://www.gutenberg.org/ebooks/11339"
+  }
+}

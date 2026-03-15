@@ -1,8 +1,17 @@
+/**
+ * Child Home Screen
+ * 
+ * Main story browsing screen organized by genres with age-appropriate sections.
+ * Auto-opens to child's favorite genre selected during onboarding.
+ * 
+ * IMPORTANT: Stories are loaded from storyApprovalService, showing only
+ * parent-approved stories from AsyncStorage (not the raw manifest).
+ */
+
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Dimensions,
-    FlatList,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -12,10 +21,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { getLibraryStories, LibraryStory } from '../src/data/api/storyApi';
 import { AvatarType, ChildProfile, getProfile, InterestType, saveProfile } from '../src/data/storage/profileStorage';
-import { getStories, Story } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
+import { ChildDisplayStory, getVisibleStoriesForChild } from '../src/domain/services/storyApprovalService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -35,71 +43,102 @@ const AVATAR_EMOJIS: Record<AvatarType, string> = {
   Cat: '🐱',
 };
 
-// Category-specific emojis (multiple per category for variety)
-const CATEGORY_EMOJIS: Record<string, string[]> = {
-  'Super Heroes': ['🦸', '🦸‍♀️', '💪', '⚡', '🛡️', '🎭'],
-  'Dragons & Magic': ['🐲', '🧙‍♂️', '✨', '🔮', '🪄', '🏰'],
-  'Fairy Tales': ['👸', '🤴', '🏰', '👗', '🦋', '🌹'],
-  'Mystery & Puzzles': ['🔍', '🕵️', '❓', '🗝️', '🔐', '🧩'],
-  'Dinosaurs': ['🦕', '🦖', '🥚', '🌋', '🦴', '🌿'],
-  'Ocean Adventures': ['🐳', '🐠', '🦈', '🐙', '🐚', '🧜‍♀️'],
-  'Cute Animals': ['🐰', '🐶', '🐱', '🦊', '🐼', '🐨'],
-  'Space & Robots': ['🚀', '🤖', '👽', '🛸', '🌟', '🪐'],
-  'General': ['📚', '📖', '🌈', '⭐', '🎉', '💫'],
-};
+// Genre definitions with display info
+type GenreId = 'animals' | 'adventure' | 'bedtime' | 'science' | 'values' | 'fantasy';
 
-// Kid-friendly pastel card colors per category
-const CATEGORY_COLORS: Record<string, string> = {
-  'Super Heroes': '#FFE066',     // Sunny yellow
-  'Dragons & Magic': '#C4A7FF',  // Soft purple
-  'Fairy Tales': '#FFB8D9',      // Soft pink
-  'Mystery & Puzzles': '#7DD3FC', // Sky blue
-  'Dinosaurs': '#86EFAC',        // Mint green
-  'Ocean Adventures': '#7DD3FC', // Ocean blue
-  'Cute Animals': '#FBBF24',     // Warm orange
-  'Space & Robots': '#A78BFA',   // Violet
-  'General': '#F0ABFC',          // Light purple
-};
-
-// All categories for tabs
-const ALL_CATEGORIES = [
-  'All',
-  'Super Heroes',
-  'Dragons & Magic', 
-  'Fairy Tales',
-  'Mystery & Puzzles',
-  'Dinosaurs',
-  'Ocean Adventures',
-  'Cute Animals',
-  'Space & Robots',
+const GENRES: { id: GenreId; name: string; emoji: string; color: string }[] = [
+  { id: 'animals', name: 'Animals', emoji: '🐾', color: '#86EFAC' },
+  { id: 'adventure', name: 'Adventure', emoji: '🗺️', color: '#FBBF24' },
+  { id: 'bedtime', name: 'Bedtime', emoji: '🌙', color: '#C4B5FD' },
+  { id: 'science', name: 'Science', emoji: '🔬', color: '#7DD3FC' },
+  { id: 'values', name: 'Values', emoji: '💝', color: '#FDA4AF' },
+  { id: 'fantasy', name: 'Fantasy', emoji: '✨', color: '#D8B4FE' },
 ];
+
+// Map interests to genres for auto-selection
+const INTEREST_TO_GENRE: Record<InterestType, GenreId> = {
+  'Super Heroes': 'adventure',
+  'Dragons & Magic': 'fantasy',
+  'Fairy Tales': 'fantasy',
+  'Mystery & Puzzles': 'adventure',
+  'Dinosaurs': 'animals',
+  'Ocean Adventures': 'adventure',
+  'Cute Animals': 'animals',
+  'Space & Robots': 'science',
+};
+
+// Age range definitions
+type AgeRange = '3-5' | '5-7' | '7-9';
+
+const AGE_RANGES: { id: AgeRange; label: string; shortLabel: string }[] = [
+  { id: '3-5', label: 'Ages 3-5', shortLabel: 'Little Readers' },
+  { id: '5-7', label: 'Ages 5-7', shortLabel: 'Growing Readers' },
+  { id: '7-9', label: 'Ages 7-9', shortLabel: 'Big Readers' },
+];
+
+// Get age range for a given age
+function getAgeRange(age: number): AgeRange {
+  if (age <= 5) return '3-5';
+  if (age <= 7) return '5-7';
+  return '7-9';
+}
+
+// Category emojis for variety
+const CATEGORY_EMOJIS: Record<string, string[]> = {
+  'Animals': ['🐾', '🐰', '🦊', '🐻', '🐼', '🐨'],
+  'Adventure': ['🗺️', '🏔️', '⛵', '🎒', '🧭', '🌄'],
+  'Bedtime': ['🌙', '⭐', '💤', '🌟', '🛏️', '😴'],
+  'Science': ['🔬', '🧪', '🔭', '🧲', '🦠', '⚗️'],
+  'Values': ['💝', '🤝', '💕', '🌈', '❤️', '🙏'],
+  'Fantasy': ['✨', '🔮', '🧙', '🦄', '🏰', '🐲'],
+};
 
 type DisplayStory = {
   id: string;
   title: string;
   text: string;
   category: string;
+  genre: GenreId;
+  ageRange: AgeRange;
   readingLevel: string;
   isLibrary: boolean;
   isFavorite: boolean;
-  libraryData?: LibraryStory;
+  libraryData?: ChildDisplayStory;
+  emoji?: string;
 };
 
 export default function ChildHomeScreen() {
   const router = useRouter();
-  const [stories, setStories] = useState<Story[]>([]);
-  const [libraryStories, setLibraryStories] = useState<LibraryStory[]>([]);
-  const [profile, setProfile] = useState<ChildProfile | null>(null);
+  // Stories loaded asynchronously from approval service (only approved stories)
+  const [libraryStories, setLibraryStories] = useState<ChildDisplayStory[]>([]);
+  const [profile, setProfileState] = useState<ChildProfile | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [activeTab, setActiveTab] = useState<'stories' | 'favorites'>('stories');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedGenre, setSelectedGenre] = useState<GenreId | 'favorites'>('animals');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [isOffline, setIsOffline] = useState(false);
-  const [loadingStories, setLoadingStories] = useState(false);
+  // Loading state for async story loading
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [initialGenreSet, setInitialGenreSet] = useState(false);
+
+  // Determine child's age range
+  const childAgeRange = useMemo(() => {
+    return profile?.age ? getAgeRange(profile.age) : '3-5';
+  }, [profile?.age]);
 
   useEffect(() => {
     checkProfileAndRedirect();
   }, []);
+
+  // Auto-select genre based on first interest
+  useEffect(() => {
+    if (profile?.interests && profile.interests.length > 0 && !initialGenreSet) {
+      const firstInterest = profile.interests[0];
+      const genre = INTEREST_TO_GENRE[firstInterest];
+      if (genre) {
+        setSelectedGenre(genre);
+        setInitialGenreSet(true);
+      }
+    }
+  }, [profile?.interests, initialGenreSet]);
 
   const checkProfileAndRedirect = async () => {
     try {
@@ -108,11 +147,12 @@ export default function ChildHomeScreen() {
         router.replace('/onboarding/welcome');
         return;
       }
-      setProfile(data);
-      // Load favorites from profile
+      setProfileState(data);
       if (data.favoriteStories) {
         setFavorites(new Set(data.favoriteStories));
       }
+      // Load approved stories after profile
+      await loadStories();
       setIsReady(true);
     } catch (error) {
       console.error('checkProfileAndRedirect:', normalizeError(error));
@@ -123,44 +163,20 @@ export default function ChildHomeScreen() {
   useFocusEffect(
     useCallback(() => {
       if (isReady) {
-        loadStories();
-        loadLibraryStories();
         loadProfile();
+        loadStories(); // Refresh stories on focus
       }
     }, [isReady])
   );
 
+  // Load approved stories from approval service
   const loadStories = async () => {
     try {
-      const data = await getStories();
-      setStories(data.filter((s) => s.approved));
+      setLoadingStories(true);
+      const stories = await getVisibleStoriesForChild();
+      setLibraryStories(stories);
     } catch (error) {
       console.error('loadStories:', normalizeError(error));
-    }
-  };
-
-  const loadLibraryStories = async () => {
-    try {
-      setLoadingStories(true);
-      const result = await getLibraryStories({ limit: 50 });
-      if (result.success) {
-        // Track if we're showing cached data (offline mode)
-        setIsOffline(result.fromCache || false);
-        
-        let filteredStories = result.stories;
-        if (profile?.interests && profile.interests.length > 0) {
-          const interestSet = new Set(profile.interests);
-          const matchingStories = filteredStories.filter(s => interestSet.has(s.category as InterestType));
-          const otherStories = filteredStories.filter(s => !interestSet.has(s.category as InterestType));
-          filteredStories = [...matchingStories, ...otherStories];
-        }
-        setLibraryStories(filteredStories);
-      } else {
-        setIsOffline(true);
-      }
-    } catch (error) {
-      console.error('loadLibraryStories:', normalizeError(error));
-      setIsOffline(true);
     } finally {
       setLoadingStories(false);
     }
@@ -169,7 +185,7 @@ export default function ChildHomeScreen() {
   const loadProfile = async () => {
     try {
       const data = await getProfile();
-      setProfile(data);
+      setProfileState(data);
       if (data?.favoriteStories) {
         setFavorites(new Set(data.favoriteStories));
       }
@@ -187,7 +203,6 @@ export default function ChildHomeScreen() {
     }
     setFavorites(newFavorites);
     
-    // Save to profile
     if (profile) {
       const updatedProfile = {
         ...profile,
@@ -195,7 +210,7 @@ export default function ChildHomeScreen() {
       };
       try {
         await saveProfile(updatedProfile);
-        setProfile(updatedProfile);
+        setProfileState(updatedProfile);
       } catch (error) {
         console.error('Failed to save favorites:', normalizeError(error));
       }
@@ -216,81 +231,75 @@ export default function ChildHomeScreen() {
 
   const avatarEmoji = profile?.avatar ? AVATAR_EMOJIS[profile.avatar] : '🦖';
 
-  // Combine and prepare all stories
-  const allStories: DisplayStory[] = [
-    ...stories.map(s => ({ 
-      id: s.id,
-      title: s.title,
-      text: s.text || '',
-      category: s.theme || 'General',
-      readingLevel: s.difficulty || 'Beginner',
-      isLibrary: false,
-      isFavorite: favorites.has(s.id),
-    })),
-    ...libraryStories.map(s => ({ 
-      id: s._id,
-      title: s.title,
-      text: s.text || '',
-      category: s.category || 'General',
-      readingLevel: s.readingLevel || 'Beginner',
-      isLibrary: true,
-      isFavorite: favorites.has(s._id),
-      libraryData: s
-    }))
-  ];
+  // Map category name to genre id
+  const categoryToGenre = (category: string): GenreId => {
+    const lower = category.toLowerCase();
+    if (GENRES.some(g => g.id === lower)) return lower as GenreId;
+    return 'animals';
+  };
 
-  // Filter by category and tab
-  let displayStories = allStories;
-  if (activeTab === 'favorites') {
-    displayStories = allStories.filter(s => s.isFavorite);
-  }
-  if (selectedCategory !== 'All') {
-    displayStories = displayStories.filter(s => s.category === selectedCategory);
-  }
+  // Convert library stories to display format
+  const allStories: DisplayStory[] = libraryStories.map((s, index) => ({
+    id: s._id,
+    title: s.title,
+    text: s.text || '',
+    category: s.category || 'Animals',
+    genre: categoryToGenre(s.category || 'Animals'),
+    ageRange: (s.ageBand as AgeRange) || '3-5',
+    readingLevel: s.readingLevel || 'Beginner',
+    isLibrary: true,
+    isFavorite: favorites.has(s._id),
+    libraryData: s,
+    emoji: s.emoji || CATEGORY_EMOJIS[s.category || 'Animals']?.[index % 6] || '📚',
+  }));
 
-  // Get emoji for story based on category with variety
+  // Get stories for selected genre, organized by age
+  const getStoriesByGenreAndAge = () => {
+    if (selectedGenre === 'favorites') {
+      return { forYou: allStories.filter(s => s.isFavorite), younger: [], older: [] };
+    }
+
+    const genreStories = allStories.filter(s => s.genre === selectedGenre);
+    
+    // Get current age range index
+    const currentAgeIndex = AGE_RANGES.findIndex(a => a.id === childAgeRange);
+    
+    // Sort stories by age range
+    const forYou = genreStories.filter(s => s.ageRange === childAgeRange);
+    const younger = genreStories.filter(s => 
+      AGE_RANGES.findIndex(a => a.id === s.ageRange) < currentAgeIndex
+    );
+    const older = genreStories.filter(s => 
+      AGE_RANGES.findIndex(a => a.id === s.ageRange) > currentAgeIndex
+    );
+
+    return { forYou, younger, older };
+  };
+
+  const { forYou, younger, older } = getStoriesByGenreAndAge();
+
+  // Get story emoji with variety
   const getStoryEmoji = (category: string, index: number) => {
-    const emojis = CATEGORY_EMOJIS[category] || CATEGORY_EMOJIS['General'];
+    const emojis = CATEGORY_EMOJIS[category] || CATEGORY_EMOJIS['Animals'];
     return emojis[index % emojis.length];
   };
 
-  // Get color for story based on category
-  const getStoryColor = (category: string) => {
-    return CATEGORY_COLORS[category] || CATEGORY_COLORS['General'];
+  const getGenreColor = (genreId: GenreId): string => {
+    return GENRES.find(g => g.id === genreId)?.color || '#86EFAC';
   };
 
-  const renderCategoryTab = (category: string) => {
-    const isActive = selectedCategory === category;
-    const emoji = category === 'All' ? '🌈' : (CATEGORY_EMOJIS[category]?.[0] || '📚');
-    
-    return (
-      <TouchableOpacity
-        key={category}
-        style={[styles.categoryTab, isActive && styles.categoryTabActive]}
-        onPress={() => setSelectedCategory(category)}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.categoryTabEmoji}>{emoji}</Text>
-        <Text style={[styles.categoryTabText, isActive && styles.categoryTabTextActive]} numberOfLines={1}>
-          {category === 'All' ? 'All Stories' : category.split(' ')[0]}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderStoryCard = ({ item, index }: { item: DisplayStory; index: number }) => {
-    const bgColor = getStoryColor(item.category);
-    const emoji = getStoryEmoji(item.category, index);
+  const renderStoryCard = (item: DisplayStory, index: number) => {
+    const bgColor = getGenreColor(item.genre);
+    const emoji = item.emoji || getStoryEmoji(item.category, index);
     const pageCount = item.text?.split('\n\n').length || 8;
 
     return (
-      <View style={styles.storyCardWrapper}>
+      <View key={item.id} style={styles.storyCardWrapper}>
         <TouchableOpacity
           style={[styles.storyCard, { backgroundColor: bgColor }]}
           onPress={() => handleStoryPress(item)}
           activeOpacity={0.9}
         >
-          {/* Favorite Button */}
           <TouchableOpacity
             style={styles.favoriteButton}
             onPress={() => toggleFavorite(item.id)}
@@ -301,14 +310,10 @@ export default function ChildHomeScreen() {
             </Text>
           </TouchableOpacity>
           
-          {/* Category Badge */}
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryBadgeText}>
-              {item.category.split(' ')[0]}
-            </Text>
+          <View style={styles.ageBadge}>
+            <Text style={styles.ageBadgeText}>{item.ageRange}</Text>
           </View>
           
-          {/* Story Emoji */}
           <Text style={styles.storyCardEmoji}>{emoji}</Text>
         </TouchableOpacity>
         
@@ -327,123 +332,212 @@ export default function ChildHomeScreen() {
     );
   };
 
+  const renderHorizontalStoryList = (stories: DisplayStory[], title: string, emoji: string, subtitle?: string) => {
+    if (stories.length === 0) return null;
+
+    return (
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionEmoji}>{emoji}</Text>
+          <View style={styles.sectionTitleContainer}>
+            <Text style={styles.sectionTitle}>{title}</Text>
+            {subtitle && <Text style={styles.sectionSubtitle}>{subtitle}</Text>}
+          </View>
+          <Text style={styles.sectionCount}>{stories.length} stories</Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScrollContent}
+        >
+          {stories.map((story, index) => renderStoryCard(story, index))}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderGenreTab = (genre: typeof GENRES[0]) => {
+    const isActive = selectedGenre === genre.id;
+    
+    return (
+      <TouchableOpacity
+        key={genre.id}
+        style={[styles.genreTab, isActive && styles.genreTabActive, { borderColor: isActive ? genre.color : '#E0E0E0' }]}
+        onPress={() => setSelectedGenre(genre.id)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.genreTabEmoji}>{genre.emoji}</Text>
+        <Text style={[styles.genreTabText, isActive && styles.genreTabTextActive]}>
+          {genre.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const getCurrentGenreName = () => {
+    if (selectedGenre === 'favorites') return 'My Favorites';
+    return GENRES.find(g => g.id === selectedGenre)?.name || 'Stories';
+  };
+
+  const getCurrentGenreEmoji = () => {
+    if (selectedGenre === 'favorites') return '❤️';
+    return GENRES.find(g => g.id === selectedGenre)?.emoji || '📚';
+  };
+
+  // Get age range label
+  const getAgeRangeLabel = (ageRange: AgeRange) => {
+    return AGE_RANGES.find(a => a.id === ageRange)?.shortLabel || 'Readers';
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF9E6" />
       <View style={styles.container}>
-        {/* Offline Banner */}
-        {isOffline && (
-          <View style={styles.offlineBanner}>
-            <Text style={styles.offlineIcon}>📴</Text>
-            <Text style={styles.offlineText}>Offline Mode - Showing saved stories</Text>
-          </View>
-        )}
-
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <View style={styles.avatarBubble}>
+            <TouchableOpacity
+              style={styles.avatarBubble}
+              onPress={() => router.push('/profile')}
+              activeOpacity={0.7}
+            >
               <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.headerText}>
               <Text style={styles.greeting}>Hey {profile?.name || 'there'}! 👋</Text>
               <Text style={styles.subGreeting}>What shall we read today?</Text>
             </View>
           </View>
-          <View style={styles.starBadge}>
-            <Text style={styles.starIcon}>⭐</Text>
-            <Text style={styles.starCount}>{favorites.size}</Text>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={[
+                styles.favoritesButton,
+                selectedGenre === 'favorites' && styles.favoritesButtonActive,
+              ]}
+              onPress={() => setSelectedGenre('favorites')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.favoritesEmoji}>❤️</Text>
+              {favorites.size > 0 && (
+                <View style={styles.favBadge}>
+                  <Text style={styles.favBadgeText}>{favorites.size}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => router.push('/profile')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.settingsEmoji}>⚙️</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Main Tab Switcher */}
-        <View style={styles.mainTabBar}>
-          <TouchableOpacity
-            style={[styles.mainTab, activeTab === 'stories' && styles.mainTabActive]}
-            onPress={() => setActiveTab('stories')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.mainTabEmoji}>📚</Text>
-            <Text style={[styles.mainTabText, activeTab === 'stories' && styles.mainTabTextActive]}>
-              All Stories
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.mainTab, activeTab === 'favorites' && styles.mainTabActive]}
-            onPress={() => setActiveTab('favorites')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.mainTabEmoji}>❤️</Text>
-            <Text style={[styles.mainTabText, activeTab === 'favorites' && styles.mainTabTextActive]}>
-              My Favorites
-            </Text>
-            {favorites.size > 0 && (
-              <View style={styles.favBadge}>
-                <Text style={styles.favBadgeText}>{favorites.size}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Category Tabs */}
-        <ScrollView 
-          horizontal 
+        {/* Genre Tabs */}
+        <ScrollView
+          horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.categoryScroll}
-          contentContainerStyle={styles.categoryScrollContent}
+          style={styles.genreScroll}
+          contentContainerStyle={styles.genreScrollContent}
         >
-          {ALL_CATEGORIES.map(renderCategoryTab)}
+          {GENRES.map(renderGenreTab)}
         </ScrollView>
 
-        {/* Stories Grid */}
-        <FlatList
-          data={displayStories}
-          keyExtractor={(item) => item.id}
-          numColumns={2}
-          style={styles.storiesList}
-          contentContainerStyle={styles.storiesContent}
+        {/* Genre Title */}
+        <View style={styles.genreTitleContainer}>
+          <Text style={styles.genreTitleEmoji}>{getCurrentGenreEmoji()}</Text>
+          <Text style={styles.genreTitle}>{getCurrentGenreName()}</Text>
+        </View>
+
+        {/* Stories Content */}
+        <ScrollView
+          style={styles.storiesScroll}
           showsVerticalScrollIndicator={false}
-          columnWrapperStyle={styles.columnWrapper}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>
-                {activeTab === 'favorites' ? '💝' : '📚'}
-              </Text>
-              <Text style={styles.emptyText}>
-                {activeTab === 'favorites' ? 'No favorites yet!' : 'No stories found!'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {activeTab === 'favorites' 
-                  ? 'Tap the heart ❤️ on any story to add it here!'
-                  : 'Try selecting a different category.'}
-              </Text>
-            </View>
-          }
-          renderItem={renderStoryCard}
-        />
+          contentContainerStyle={styles.storiesScrollContent}
+        >
+          {selectedGenre === 'favorites' ? (
+            forYou.length > 0 ? (
+              <View style={styles.favoritesGrid}>
+                {forYou.map((story, index) => renderStoryCard(story, index))}
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>💝</Text>
+                <Text style={styles.emptyText}>No favorites yet!</Text>
+                <Text style={styles.emptySubtext}>
+                  Tap the heart ❤️ on any story to add it here!
+                </Text>
+              </View>
+            )
+          ) : (
+            <>
+              {/* For You Section - Child's age range (shown first) */}
+              {renderHorizontalStoryList(
+                forYou,
+                '⭐ Perfect for You!',
+                '🎯',
+                `Made for ${getAgeRangeLabel(childAgeRange)}`
+              )}
+
+              {/* Younger Stories Section */}
+              {renderHorizontalStoryList(
+                younger,
+                'Easy Adventures',
+                '🌟',
+                'Quick & simple reads'
+              )}
+
+              {/* Older Stories Section */}
+              {renderHorizontalStoryList(
+                older,
+                'Challenge Yourself!',
+                '🚀',
+                'For advanced readers'
+              )}
+
+              {/* Empty state if no stories in genre */}
+              {forYou.length === 0 && younger.length === 0 && older.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyEmoji}>📚</Text>
+                  <Text style={styles.emptyText}>No stories found!</Text>
+                  <Text style={styles.emptySubtext}>
+                    Try selecting a different genre.
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </ScrollView>
 
         {/* Bottom Navigation */}
         <View style={styles.bottomNav}>
           <TouchableOpacity
             style={styles.navItem}
-            onPress={() => setActiveTab('stories')}
+            onPress={() => {
+              // Go to first interest's genre or animals
+              const firstGenre = profile?.interests?.[0] 
+                ? INTEREST_TO_GENRE[profile.interests[0]] 
+                : 'animals';
+              setSelectedGenre(firstGenre);
+            }}
             activeOpacity={0.7}
           >
-            <View style={[styles.navIconBg, activeTab === 'stories' && styles.navIconBgActive]}>
+            <View style={[styles.navIconBg, selectedGenre !== 'favorites' && styles.navIconBgActive]}>
               <Text style={styles.navIcon}>🏠</Text>
             </View>
-            <Text style={[styles.navLabel, activeTab === 'stories' && styles.navLabelActive]}>Home</Text>
+            <Text style={[styles.navLabel, selectedGenre !== 'favorites' && styles.navLabelActive]}>Home</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={styles.navItem}
-            onPress={() => setActiveTab('favorites')}
+            onPress={() => setSelectedGenre('favorites')}
             activeOpacity={0.7}
           >
-            <View style={[styles.navIconBg, activeTab === 'favorites' && styles.navIconBgActive]}>
+            <View style={[styles.navIconBg, selectedGenre === 'favorites' && styles.navIconBgActive]}>
               <Text style={styles.navIcon}>❤️</Text>
             </View>
-            <Text style={[styles.navLabel, activeTab === 'favorites' && styles.navLabelActive]}>Favorites</Text>
+            <Text style={[styles.navLabel, selectedGenre === 'favorites' && styles.navLabelActive]}>Favorites</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -465,31 +559,12 @@ export default function ChildHomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FFF9E6', // Warm cream background
+    backgroundColor: '#FFF9E6',
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   container: {
     flex: 1,
     backgroundColor: '#FFF9E6',
-  },
-  offlineBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#FFB74D',
-  },
-  offlineIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  offlineText: {
-    fontSize: 14,
-    color: '#E65100',
-    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',
@@ -538,60 +613,27 @@ const styles = StyleSheet.create({
     color: '#666666',
     marginTop: 2,
   },
-  starBadge: {
+  headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF3CD',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 8,
+  },
+  favoritesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3F3',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: '#FFD54F',
+    borderColor: '#FFB4B4',
   },
-  starIcon: {
-    fontSize: 18,
-    marginRight: 4,
+  favoritesButtonActive: {
+    backgroundColor: '#FFE4E4',
+    borderColor: '#FF6B6B',
   },
-  starCount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#795548',
-  },
-  mainTabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  mainTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
-  mainTabActive: {
-    backgroundColor: '#FFE082',
-    borderColor: '#FFB74D',
-  },
-  mainTabEmoji: {
+  favoritesEmoji: {
     fontSize: 20,
-    marginRight: 8,
-  },
-  mainTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666666',
-  },
-  mainTabTextActive: {
-    color: '#5D4037',
-    fontWeight: '700',
   },
   favBadge: {
     backgroundColor: '#FF6B6B',
@@ -599,62 +641,135 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     marginLeft: 6,
+    minWidth: 20,
+    alignItems: 'center',
   },
   favBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
   },
-  categoryScroll: {
-    maxHeight: 48,
+  settingsButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3E8FF',
+    padding: 10,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#C4B5FD',
   },
-  categoryScrollContent: {
+  settingsEmoji: {
+    fontSize: 20,
+  },
+  genreScroll: {
+    maxHeight: 56,
+    marginTop: 12,
+  },
+  genreScrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
+    gap: 10,
   },
-  categoryTab: {
+  genreTab: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
     marginRight: 8,
     borderWidth: 2,
-    borderColor: '#E8E8E8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  categoryTabActive: {
-    backgroundColor: '#B2DFDB',
-    borderColor: '#4DB6AC',
+  genreTabActive: {
+    backgroundColor: '#FFFEF0',
+    borderWidth: 3,
   },
-  categoryTabEmoji: {
-    fontSize: 16,
-    marginRight: 4,
+  genreTabEmoji: {
+    fontSize: 20,
+    marginRight: 6,
   },
-  categoryTabText: {
-    fontSize: 12,
+  genreTabText: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#666666',
   },
-  categoryTabTextActive: {
-    color: '#00695C',
+  genreTabTextActive: {
+    color: '#333333',
     fontWeight: '700',
   },
-  storiesList: {
+  genreTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  genreTitleEmoji: {
+    fontSize: 28,
+    marginRight: 10,
+  },
+  genreTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#333333',
+  },
+  storiesScroll: {
     flex: 1,
   },
-  storiesContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 16,
+  storiesScrollContent: {
+    paddingBottom: 20,
   },
-  columnWrapper: {
-    gap: 16,
+  sectionContainer: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sectionEmoji: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  sectionTitleContainer: {
+    flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333333',
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#888888',
+    marginTop: 2,
+  },
+  sectionCount: {
+    fontSize: 12,
+    color: '#888888',
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  horizontalScrollContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  favoritesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 12,
   },
   storyCardWrapper: {
-    flex: 1,
-    marginBottom: 16,
+    width: (SCREEN_WIDTH - 56) / 2,
+    marginBottom: 8,
   },
   storyCard: {
     aspectRatio: 1,
@@ -689,7 +804,7 @@ const styles = StyleSheet.create({
   favoriteIcon: {
     fontSize: 20,
   },
-  categoryBadge: {
+  ageBadge: {
     position: 'absolute',
     top: 8,
     left: 8,
@@ -698,7 +813,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
   },
-  categoryBadgeText: {
+  ageBadgeText: {
     fontSize: 10,
     fontWeight: '700',
     color: '#5D4037',

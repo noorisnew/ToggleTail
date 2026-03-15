@@ -1,5 +1,12 @@
 import { API_BASE_URL } from '../../config/api';
+import { StoryLength } from '../../domain/services/storyCreationService';
 import { logger } from '../../services/loggerService';
+import {
+    getStoriesByGenre as getPreloadedByGenre,
+    getFullStory as getPreloadedFullStory,
+    getAllStories as getPreloadedStories,
+    StoryMetadata as PreloadedStoryMetadata
+} from '../library/storyLibraryService';
 import {
     cacheLibraryStories,
     cacheStoryContent,
@@ -11,6 +18,92 @@ import {
 import { InterestType } from '../storage/profileStorage';
 import { addStory, Story } from '../storage/storyStorage';
 
+/**
+ * Genre to category mapping for preloaded stories
+ */
+const GENRE_TO_CATEGORY: Record<string, string> = {
+  animals: 'Animals',
+  adventure: 'Adventure',
+  bedtime: 'Bedtime',
+  science: 'Science',
+  values: 'Values',
+  fantasy: 'Fantasy',
+};
+
+/**
+ * Convert preloaded story metadata to LibraryStory format
+ */
+function convertPreloadedToLibraryStory(story: PreloadedStoryMetadata): LibraryStory {
+  return {
+    _id: story.id,
+    title: story.title,
+    category: GENRE_TO_CATEGORY[story.genre] || story.genre,
+    ageBand: story.ageRange,
+    readingLevel: story.readingLevel,
+    provider: 'preloaded',
+    coverUrl: null,
+    wordCount: story.duration * 150, // Estimate: ~150 words per minute
+  };
+}
+
+/**
+ * Get preloaded stories as LibraryStory format
+ * This is SYNCHRONOUS for instant loading
+ */
+function getPreloadedLibraryStories(category?: string, limit?: number, offset?: number): LibraryStory[] {
+  let stories: PreloadedStoryMetadata[];
+  
+  if (category) {
+    // Map category back to genre
+    const genre = Object.entries(GENRE_TO_CATEGORY).find(([_, cat]) => cat === category)?.[0];
+    if (genre) {
+      const result = getPreloadedByGenre(genre as any, 1, 100);
+      stories = result.items;
+    } else {
+      stories = [];
+    }
+  } else {
+    const result = getPreloadedStories(1, 100);
+    stories = result.items;
+  }
+  
+  // Apply pagination
+  const start = offset || 0;
+  const end = limit ? start + limit : stories.length;
+  const sliced = stories.slice(start, end);
+  
+  return sliced.map(convertPreloadedToLibraryStory);
+}
+
+/**
+ * Get preloaded stories synchronously - instant loading, no async
+ * Use this for immediate story list display
+ */
+export function getPreloadedStoriesSync(category?: string): LibraryStory[] {
+  return getPreloadedLibraryStories(category, 100, 0);
+}
+
+/**
+ * Get a preloaded story by ID with full content
+ */
+async function getPreloadedStoryById(storyId: string): Promise<LibraryStory | null> {
+  try {
+    const fullStory = await getPreloadedFullStory(storyId);
+    if (!fullStory) return null;
+    
+    const libraryStory = convertPreloadedToLibraryStory(fullStory);
+    // Add full text content from the story
+    if (fullStory.fullContent) {
+      libraryStory.text = fullStory.fullContent.content;
+      libraryStory.author = fullStory.fullContent.author;
+    }
+    return libraryStory;
+  } catch (error) {
+    console.error('getPreloadedStoryById failed:', error);
+    return null;
+  }
+}
+
 export type GenerateStoryParams = {
   childName?: string;
   age: number;
@@ -20,7 +113,9 @@ export type GenerateStoryParams = {
   title?: string;
   theme?: string;
   mainCharacter?: string;
-  storyLength?: 'Short' | 'Medium' | 'Long';
+  specialCharacters?: string;
+  storyContext?: string;
+  storyLength?: StoryLength;
   agentStyle?: string;
 };
 
@@ -179,7 +274,7 @@ export type LibraryStory = {
 
 /**
  * Fetch stories from the library (pre-loaded stories)
- * Uses cache when offline or when cache is valid
+ * Preloaded stories are always available - API stories are supplemental
  */
 export async function getLibraryStories(options?: {
   category?: string;
@@ -193,6 +288,18 @@ export async function getLibraryStories(options?: {
   error?: string;
 }> {
   try {
+    // Always start with preloaded stories - they're bundled with the app
+    const preloaded = getPreloadedLibraryStories(options?.category, options?.limit, options?.offset);
+    
+    // If we have preloaded stories and not forcing refresh, return them
+    if (preloaded.length > 0 && !options?.forceRefresh) {
+      return {
+        stories: preloaded,
+        success: true,
+        fromCache: true, // Treat preloaded as cached
+      };
+    }
+    
     const online = await isOnline();
     const cacheValid = await isCacheValid();
 
@@ -219,8 +326,16 @@ export async function getLibraryStories(options?: {
         };
       }
       
-      // Offline with no cache
+      // Offline with no cache - fall back to preloaded library
       if (!online) {
+        const preloaded = getPreloadedLibraryStories(options?.category, options?.limit, options?.offset);
+        if (preloaded.length > 0) {
+          return {
+            stories: preloaded,
+            success: true,
+            fromCache: true,
+          };
+        }
         return { 
           stories: [], 
           success: false, 
@@ -250,6 +365,11 @@ export async function getLibraryStories(options?: {
       if (cached && cached.length > 0) {
         return { stories: cached as LibraryStory[], success: true, fromCache: true };
       }
+      // Fall back to preloaded library
+      const preloaded = getPreloadedLibraryStories(options?.category, options?.limit, options?.offset);
+      if (preloaded.length > 0) {
+        return { stories: preloaded, success: true, fromCache: true };
+      }
       return { stories: [], success: false, fromCache: false, error: data.message || 'Failed to fetch library' };
     }
 
@@ -274,6 +394,12 @@ export async function getLibraryStories(options?: {
       return { stories: filteredStories, success: true, fromCache: true };
     }
     
+    // Fall back to preloaded library
+    const preloaded = getPreloadedLibraryStories(options?.category, options?.limit, options?.offset);
+    if (preloaded.length > 0) {
+      return { stories: preloaded, success: true, fromCache: true };
+    }
+    
     return { 
       stories: [], 
       success: false, 
@@ -285,7 +411,7 @@ export async function getLibraryStories(options?: {
 
 /**
  * Fetch a single story with full content
- * Uses cache when offline or as fallback
+ * Uses cache when offline or as fallback, then preloaded library
  */
 export async function getStoryById(storyId: string): Promise<{
   story: LibraryStory | null;
@@ -296,11 +422,16 @@ export async function getStoryById(storyId: string): Promise<{
   try {
     const online = await isOnline();
 
-    // If offline, try cache first
+    // If offline, try cache first, then preloaded
     if (!online) {
       const cached = await getCachedStoryContent(storyId);
       if (cached) {
         return { story: cached as LibraryStory, success: true, fromCache: true };
+      }
+      // Try preloaded library
+      const preloaded = await getPreloadedStoryById(storyId);
+      if (preloaded) {
+        return { story: preloaded, success: true, fromCache: true };
       }
       return { 
         story: null, 
@@ -324,6 +455,11 @@ export async function getStoryById(storyId: string): Promise<{
       if (cached) {
         return { story: cached as LibraryStory, success: true, fromCache: true };
       }
+      // Try preloaded library
+      const preloaded = await getPreloadedStoryById(storyId);
+      if (preloaded) {
+        return { story: preloaded, success: true, fromCache: true };
+      }
       return { story: null, success: false, fromCache: false, error: data.message || 'Failed to fetch story' };
     }
 
@@ -342,6 +478,12 @@ export async function getStoryById(storyId: string): Promise<{
     const cached = await getCachedStoryContent(storyId);
     if (cached) {
       return { story: cached as LibraryStory, success: true, fromCache: true };
+    }
+    
+    // Try preloaded library
+    const preloaded = await getPreloadedStoryById(storyId);
+    if (preloaded) {
+      return { story: preloaded, success: true, fromCache: true };
     }
     
     return { 

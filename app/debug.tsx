@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Spacing, Typography } from '../constants/design';
 import { normalizeError } from '../src/domain/services/errorService';
+import { clearParentPassword, hasParentPassword } from '../src/services/parentGateService';
 
 // Dark theme colors for debug panel
 const DebugColors = {
@@ -19,9 +20,8 @@ const DebugColors = {
   action: ['#4a90d9', '#357abd'] as const,
 };
 
-// Keys to display
+// Keys to display (AsyncStorage only - password is in SecureStore)
 const STORAGE_KEYS = [
-  'parent_pin_v1',
   'stories_v1',
   'narration_mode_v1',
   'onboarding_done_v1',
@@ -34,6 +34,7 @@ type StorageData = Record<string, string | null>;
 export default function DebugScreen() {
   const router = useRouter();
   const [storageData, setStorageData] = useState<StorageData>({});
+  const [hasPassword, setHasPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,6 +49,9 @@ export default function DebugScreen() {
         data[key] = await AsyncStorage.getItem(key);
       }
       setStorageData(data);
+      // Check SecureStore for password
+      const passwordExists = await hasParentPassword();
+      setHasPassword(passwordExists);
     } catch (error) {
       console.error('loadStorageData:', normalizeError(error));
       Alert.alert('Error', 'Could not load storage data.');
@@ -56,14 +60,14 @@ export default function DebugScreen() {
     }
   };
 
-  const handleClearPin = async () => {
+  const handleClearPassword = async () => {
     try {
-      await AsyncStorage.removeItem('parent_pin_v1');
-      Alert.alert('Success', 'PIN cleared.');
+      await clearParentPassword();
+      Alert.alert('Success', 'Parent password cleared from SecureStore.');
       loadStorageData();
     } catch (error) {
-      console.error('handleClearPin:', normalizeError(error));
-      Alert.alert('Error', 'Could not clear PIN.');
+      console.error('handleClearPassword:', normalizeError(error));
+      Alert.alert('Error', 'Could not clear password.');
     }
   };
 
@@ -147,6 +151,16 @@ export default function DebugScreen() {
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>📦 Storage Values</Text>
+          
+          {/* SecureStore password status */}
+          <View style={styles.storageItem}>
+            <Text style={styles.storageKey}>🔐 Parent Password (SecureStore)</Text>
+            <Text style={[styles.storageValue, { color: hasPassword ? '#4ecdc4' : '#888888' }]}>
+              {hasPassword ? '✓ Set (bcrypt hash)' : '(not set)'}
+            </Text>
+          </View>
+          
+          {/* AsyncStorage keys */}
           {STORAGE_KEYS.map((key) => (
             <View key={key} style={styles.storageItem}>
               <Text style={styles.storageKey}>{key}</Text>
@@ -158,14 +172,14 @@ export default function DebugScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>⚡ Quick Actions</Text>
 
-          <TouchableOpacity onPress={handleClearPin} activeOpacity={0.8}>
+          <TouchableOpacity onPress={handleClearPassword} activeOpacity={0.8}>
             <LinearGradient
               colors={[...DebugColors.action]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.actionButton}
             >
-              <Text style={styles.actionButtonText}>🔑 Clear PIN</Text>
+              <Text style={styles.actionButtonText}>🔐 Clear Password</Text>
             </LinearGradient>
           </TouchableOpacity>
 

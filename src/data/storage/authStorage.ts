@@ -12,13 +12,14 @@ import {
     NARRATION_MODE_KEY,
     ONBOARDING_KEY,
     PARENT_RECORDINGS_KEY,
-    PIN_KEY,
     PROFILE_KEY,
     STORIES_KEY,
     STORY_CONTENT_CACHE_PREFIX,
 } from './storageKeys';
 
 // Storage key for auth token (if backend auth is used)
+// NOTE: Backend token auth is not currently active in this app.
+// These token functions are placeholders for future backend integration.
 export const AUTH_TOKEN_KEY = 'auth_token_v1';
 
 /**
@@ -71,11 +72,11 @@ export async function signOut(): Promise<boolean> {
     );
 
     // Keys to remove
+    // NOTE: Parent password is stored in SecureStore, cleared separately via clearParentPassword()
     const keysToRemove = [
       AUTH_TOKEN_KEY,
       ONBOARDING_KEY,
       PROFILE_KEY,
-      PIN_KEY,
       STORIES_KEY,
       NARRATION_MODE_KEY,
       EVENT_LOG_KEY,
@@ -98,12 +99,12 @@ export async function signOut(): Promise<boolean> {
 /**
  * Clear only session data (keeps profile and stories)
  * Useful for a "soft" sign-out
+ * NOTE: Does not clear parent password - use clearParentPassword() from parentGateService
  */
 export async function clearSession(): Promise<boolean> {
   try {
     await AsyncStorage.multiRemove([
       AUTH_TOKEN_KEY,
-      PIN_KEY,
     ]);
     return true;
   } catch (error) {

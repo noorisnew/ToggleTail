@@ -1,12 +1,28 @@
+/**
+ * Narration Service
+ * Location: src/services/narrationService.ts
+ * 
+ * Handles audio recording and playback for parent narrations.
+ * This is a service layer file that orchestrates:
+ * - Microphone permissions
+ * - Audio recording via expo-av
+ * - Audio playback via expo-av
+ * - File management via expo-file-system
+ * - Storage indexing via narrationRecordingStorage
+ * 
+ * NOTE: Moved from src/data/api/ because this is not a pure API adapter.
+ * It handles device audio hardware and local file I/O, not backend API calls.
+ */
+
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { normalizeError } from '../../domain/services/errorService';
 import {
     deletePageRecording,
     getPageRecording,
     NarrationRecording,
     savePageRecording,
-} from '../storage/narrationRecordingStorage';
+} from '../data/storage/narrationRecordingStorage';
+import { normalizeError } from '../domain/services/errorService';
 
 // Recording quality settings
 const RECORDING_OPTIONS = {

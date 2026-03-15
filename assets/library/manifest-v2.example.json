@@ -1,0 +1,52 @@
+{
+  "manifestVersion": "1.0.0",
+  "createdAt": "2026-03-02T00:00:00.000Z",
+  "stories": [
+    {
+      "id": "sw-animals-001",
+      "title": "The Clever Little Fox",
+      "genre": "animals",
+      "language": "en",
+      "gradeLevel": "K-1",
+      "readingTimeSec": 180,
+      "coverAssetPath": "library/covers/sw-animals-001.webp",
+      "textAssetPath": "library/stories/sw-animals-001.json",
+      "attribution": {
+        "author": "Priya Sharma",
+        "illustrator": "Anisha Khatri",
+        "source": "StoryWeaver",
+        "license": "CC BY 4.0",
+        "sourceUrl": "https://storyweaver.org.in/stories/12345"
+      }
+    },
+    {
+      "id": "sw-adventure-001",
+      "title": "Journey to the Mountain Top",
+      "genre": "adventure",
+      "language": "en",
+      "gradeLevel": "2-3",
+      "readingTimeSec": 300,
+      "coverAssetPath": "library/covers/sw-adventure-001.webp",
+      "textAssetPath": "library/stories/sw-adventure-001.json",
+      "attribution": {
+        "author": "Marcus Chen",
+        "source": "StoryWeaver",
+        "license": "CC BY 4.0"
+      }
+    },
+    {
+      "id": "pd-bedtime-001",
+      "title": "The Night the Stars Fell",
+      "genre": "bedtime",
+      "language": "en",
+      "readingTimeSec": 240,
+      "coverAssetPath": "library/covers/pd-bedtime-001.webp",
+      "textAssetPath": "library/stories/pd-bedtime-001.json",
+      "attribution": {
+        "author": "Unknown",
+        "source": "Public Domain",
+        "license": "Public Domain"
+      }
+    }
+  ]
+}

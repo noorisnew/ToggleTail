@@ -14,7 +14,9 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ToggleTail needs microphone access so we can hear you read stories aloud!",
         "NSSpeechRecognitionUsageDescription": "ToggleTail uses speech recognition to help you practice reading and provide feedback.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -56,7 +58,8 @@
         {
           "microphonePermission": "ToggleTail needs microphone access so parents can record story narrations."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

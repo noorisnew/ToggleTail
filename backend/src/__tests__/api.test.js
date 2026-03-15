@@ -1,7 +1,7 @@
 const request = require('supertest');
 const express = require('express');
 
-// Create a minimal test app
+// minimal test app
 const app = express();
 app.use(express.json());
 

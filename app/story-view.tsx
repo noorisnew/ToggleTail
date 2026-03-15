@@ -1,9 +1,6 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
-import {
-    ExpoSpeechRecognitionModule,
-    useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Alert,
@@ -11,23 +8,59 @@ import {
     Dimensions,
     Platform,
     SafeAreaView,
+    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
-import { playPageRecording, stopPlayback as stopAudioPlayback } from '../src/data/api/narrationService';
 import { getStoryById } from '../src/data/api/storyApi';
 import { addEvent } from '../src/data/storage/eventLogStorage';
 import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
-import { getNarrationMode } from '../src/data/storage/narrationStorage';
+import { AIVoiceId, getNarrationSettings } from '../src/data/storage/narrationStorage';
 import { getStories, Story } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
+import { precacheAudio } from '../src/services/elevenLabsPlaybackService';
+import { playStoryPage, stopAllPlayback } from '../src/services/storyPlaybackService';
+import {
+    getSpeechRecognitionUnavailableMessage,
+    isSpeechRecognitionAvailable,
+    SafeSpeechRecognitionModule,
+    useSpeechRecognitionEventSafe,
+} from '../src/utils/speechRecognitionSafe';
 
-type ReadingMode = 'read-to-me' | 'help-me-read' | null;
+type ReadingMode = 'read-to-me' | 'read-myself' | 'help-me-read' | null;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Premium Children's App Color Palette
+const PREMIUM_COLORS = {
+  // Soft pastels
+  lavender: '#E8DEF8',
+  lavenderDark: '#D0BCFF',
+  peach: '#FFE5D9',
+  peachDark: '#FFB4A2',
+  mint: '#D8F3DC',
+  mintDark: '#95D5B2',
+  sky: '#D4E4FF',
+  skyDark: '#A2C9FF',
+  rose: '#FFD6E0',
+  roseDark: '#FF8FAB',
+  cream: '#FFF8E7',
+  gold: '#FFD93D',
+  
+  // Text
+  textDark: '#2D3047',
+  textMuted: '#6B7280',
+  white: '#FFFFFF',
+  
+  // Card backgrounds
+  cardPink: '#FFF0F5',
+  cardBlue: '#EEF4FF',
+  cardGreen: '#F0FDF4',
+  cardPurple: '#FAF5FF',
+};
 
 // Category-specific emojis
 const CATEGORY_EMOJIS: Record<string, string[]> = {
@@ -39,20 +72,32 @@ const CATEGORY_EMOJIS: Record<string, string[]> = {
   'Ocean Adventures': ['🐳', '🐠', '🦈', '🐙', '🐚'],
   'Cute Animals': ['🐰', '🐶', '🐱', '🦊', '🐼'],
   'Space & Robots': ['🚀', '🤖', '👽', '🛸', '🌟'],
+  'Adventure': ['🗺️', '🏔️', '🌋', '🚀', '🏴‍☠️'],
+  'Animals': ['🦁', '🐘', '🦋', '🐬', '🦊'],
+  'Bedtime': ['🌙', '⭐', '🛏️', '💤', '🧸'],
+  'Fantasy': ['🧙‍♂️', '🦄', '🐉', '🏰', '✨'],
+  'Science': ['🔬', '🧪', '🔭', '🧲', '⚗️'],
+  'Values': ['💝', '🤗', '🌟', '🕊️', '🎯'],
   'General': ['📚', '📖', '🌈', '⭐', '🎉'],
 };
 
-// Kid-friendly pastel colors per category
-const CATEGORY_COLORS: Record<string, { bg: string; accent: string }> = {
-  'Super Heroes': { bg: '#FFF9E6', accent: '#FFE066' },
-  'Dragons & Magic': { bg: '#F3E8FF', accent: '#C4A7FF' },
-  'Fairy Tales': { bg: '#FFF0F5', accent: '#FFB8D9' },
-  'Mystery & Puzzles': { bg: '#E6F7FF', accent: '#7DD3FC' },
-  'Dinosaurs': { bg: '#E6FFF0', accent: '#86EFAC' },
-  'Ocean Adventures': { bg: '#E6F7FF', accent: '#7DD3FC' },
-  'Cute Animals': { bg: '#FFF9E6', accent: '#FBBF24' },
-  'Space & Robots': { bg: '#F3E8FF', accent: '#A78BFA' },
-  'General': { bg: '#FFF0F5', accent: '#F0ABFC' },
+// Kid-friendly pastel colors per category  
+const CATEGORY_COLORS: Record<string, { bg: string; accent: string; gradient: string[] }> = {
+  'Super Heroes': { bg: '#FFF8E7', accent: '#FFD93D', gradient: ['#FFE066', '#FFD93D'] },
+  'Dragons & Magic': { bg: '#F3E8FF', accent: '#C4A7FF', gradient: ['#D8B4FE', '#A78BFA'] },
+  'Fairy Tales': { bg: '#FFF0F5', accent: '#FFB8D9', gradient: ['#FBCFE8', '#F472B6'] },
+  'Mystery & Puzzles': { bg: '#E6F7FF', accent: '#7DD3FC', gradient: ['#BAE6FD', '#38BDF8'] },
+  'Dinosaurs': { bg: '#E6FFF0', accent: '#86EFAC', gradient: ['#BBF7D0', '#4ADE80'] },
+  'Ocean Adventures': { bg: '#E6F7FF', accent: '#7DD3FC', gradient: ['#BAE6FD', '#38BDF8'] },
+  'Cute Animals': { bg: '#FFF9E6', accent: '#FBBF24', gradient: ['#FDE68A', '#F59E0B'] },
+  'Space & Robots': { bg: '#F3E8FF', accent: '#A78BFA', gradient: ['#C4B5FD', '#8B5CF6'] },
+  'Adventure': { bg: '#D8F3DC', accent: '#52B788', gradient: ['#95D5B2', '#52B788'] },
+  'Animals': { bg: '#FFE5D9', accent: '#FF8C61', gradient: ['#FFB4A2', '#FF8C61'] },
+  'Bedtime': { bg: '#E8DEF8', accent: '#A78BFA', gradient: ['#D0BCFF', '#A78BFA'] },
+  'Fantasy': { bg: '#FFD6E0', accent: '#FF6B9D', gradient: ['#FF8FAB', '#FF6B9D'] },
+  'Science': { bg: '#D4E4FF', accent: '#3B82F6', gradient: ['#A2C9FF', '#3B82F6'] },
+  'Values': { bg: '#FFD6E0', accent: '#EC4899', gradient: ['#FF8FAB', '#EC4899'] },
+  'General': { bg: '#E8DEF8', accent: '#8B5CF6', gradient: ['#D0BCFF', '#8B5CF6'] },
 };
 
 export default function StoryViewScreen() {
@@ -81,14 +126,18 @@ export default function StoryViewScreen() {
   
   // Parent narration state
   const [narrationMode, setNarrationMode] = useState<'AI' | 'Human'>('AI');
+  const [aiVoiceId, setAiVoiceId] = useState<AIVoiceId>('Rachel');
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
   const [hasParentRecording, setHasParentRecording] = useState(false);
   const [isPlayingParentAudio, setIsPlayingParentAudio] = useState(false);
+  
+  // AI narration loading state (ElevenLabs fetch/generation)
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
 
   // Load best available voice and narration mode
   useEffect(() => {
     loadBestVoice();
-    loadNarrationMode();
+    loadNarrationSettings();
   }, []);
 
   // Check for parent recordings when story/page changes
@@ -98,12 +147,13 @@ export default function StoryViewScreen() {
     }
   }, [story, currentPage]);
 
-  const loadNarrationMode = async () => {
+  const loadNarrationSettings = async () => {
     try {
-      const mode = await getNarrationMode();
-      setNarrationMode(mode);
+      const settings = await getNarrationSettings();
+      setNarrationMode(settings.preferredSource);
+      setAiVoiceId(settings.aiVoiceId);
     } catch (error) {
-      console.log('Could not load narration mode:', error);
+      console.log('Could not load narration settings:', error);
     }
   };
 
@@ -141,23 +191,23 @@ export default function StoryViewScreen() {
     }
   };
 
-  // Speech recognition event handlers
-  useSpeechRecognitionEvent('start', () => {
+  // Speech recognition event handlers (only active if native module is available)
+  useSpeechRecognitionEventSafe('start', () => {
     setIsListening(true);
   });
 
-  useSpeechRecognitionEvent('end', () => {
+  useSpeechRecognitionEventSafe('end', () => {
     setIsListening(false);
   });
 
-  useSpeechRecognitionEvent('result', (event) => {
+  useSpeechRecognitionEventSafe('result', (event) => {
     if (event.results && event.results.length > 0) {
       const transcript = event.results[0]?.transcript || '';
       processRecognizedSpeech(transcript);
     }
   });
 
-  useSpeechRecognitionEvent('error', (event) => {
+  useSpeechRecognitionEventSafe('error', (event) => {
     console.log('Speech recognition error:', event.error);
     setIsListening(false);
   });
@@ -261,7 +311,17 @@ export default function StoryViewScreen() {
   // Start listening to the child
   const startListening = async () => {
     try {
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      // Check if speech recognition is available
+      if (!isSpeechRecognitionAvailable()) {
+        Alert.alert(
+          'Feature Not Available',
+          getSpeechRecognitionUnavailableMessage(),
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      const result = await SafeSpeechRecognitionModule.requestPermissionsAsync();
       if (!result.granted) {
         Alert.alert('Permission Needed', 'Please allow microphone access so I can hear you read!');
         return;
@@ -270,7 +330,7 @@ export default function StoryViewScreen() {
       // Reset state for new listening session
       setRecognizedWords([]);
       
-      await ExpoSpeechRecognitionModule.start({
+      await SafeSpeechRecognitionModule.start({
         lang: 'en-US',
         interimResults: true,
         continuous: true,
@@ -284,7 +344,7 @@ export default function StoryViewScreen() {
   // Stop listening
   const stopListening = async () => {
     try {
-      await ExpoSpeechRecognitionModule.stop();
+      await SafeSpeechRecognitionModule.stop();
     } catch (error) {
       console.log('Error stopping speech recognition:', error);
     }
@@ -303,10 +363,9 @@ export default function StoryViewScreen() {
   useEffect(() => {
     loadStory();
     return () => {
-      Speech.stop();
-      stopAudioPlayback();
+      stopAllPlayback();
       try {
-        ExpoSpeechRecognitionModule.stop();
+        SafeSpeechRecognitionModule.stop();
       } catch (e) {
         // Ignore errors on cleanup
       }
@@ -363,6 +422,16 @@ export default function StoryViewScreen() {
   };
 
   const handleSelectMode = async (mode: ReadingMode) => {
+    // Check if speech recognition is available for help-me-read mode
+    if (mode === 'help-me-read' && !isSpeechRecognitionAvailable()) {
+      Alert.alert(
+        'Feature Not Available',
+        'The "Read with Help" mode requires a native app build and is not available in Expo Go.\n\nPlease choose "Listen to Story" or "Read Myself" instead.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setSelectedMode(mode);
     setShowModeModal(false);
     
@@ -383,72 +452,76 @@ export default function StoryViewScreen() {
   const playCurrentPage = async () => {
     if (!pages[currentPage] || !story) return;
     
-    setIsSpeaking(true);
+    // Show loading state while fetching/generating audio
+    // Don't set isSpeaking until audio actually starts
+    setIsLoadingAudio(true);
     
-    // Check if we should use parent recording
-    if (narrationMode === 'Human' && hasParentRecording) {
-      // Play parent recording
-      setIsPlayingParentAudio(true);
-      const success = await playPageRecording(
-        story.id,
-        currentPage,
-        () => {
-          // On complete
-          setIsSpeaking(false);
-          setIsPlayingParentAudio(false);
-          // Auto advance to next page after a short delay
-          if (isAutoPlaying && currentPage < pages.length - 1) {
-            autoPlayTimeoutRef.current = setTimeout(() => {
-              animatePageFlip(() => {
-                setCurrentPage(prev => prev + 1);
-              });
-            }, 2000);
-          } else if (currentPage === pages.length - 1) {
-            setIsAutoPlaying(false);
-          }
-        }
-      );
-      
-      if (!success) {
-        // Fallback to TTS if recording fails
-        setIsPlayingParentAudio(false);
-        playWithTTS();
+    // Helper for auto-advance logic (used in multiple callbacks)
+    const handlePlaybackComplete = () => {
+      setIsSpeaking(false);
+      if (isAutoPlaying && currentPage < pages.length - 1) {
+        autoPlayTimeoutRef.current = setTimeout(() => {
+          animatePageFlip(() => {
+            setCurrentPage(prev => prev + 1);
+          });
+        }, 2000);
+      } else if (currentPage === pages.length - 1) {
+        setIsAutoPlaying(false);
       }
-    } else {
-      // Use TTS
-      playWithTTS();
-    }
-  };
+    };
 
-  const playWithTTS = () => {
-    // Add natural pauses by breaking text at punctuation
-    const textToSpeak = pages[currentPage]
-      .replace(/\. /g, '.\n')  // Add pause after sentences
-      .replace(/! /g, '!\n')
-      .replace(/\? /g, '?\n');
-    
-    Speech.speak(textToSpeak, {
-      rate: 0.78, // Slower, more natural pace for kids
-      pitch: 1.0, // Natural pitch (1.1 was too high)
-      language: 'en-US',
-      voice: naturalVoice?.identifier, // Use the best available voice
-      onDone: () => {
-        setIsSpeaking(false);
-        // Auto advance to next page after a short delay
-        if (isAutoPlaying && currentPage < pages.length - 1) {
-          autoPlayTimeoutRef.current = setTimeout(() => {
-            animatePageFlip(() => {
-              setCurrentPage(prev => prev + 1);
-            });
-          }, 2000); // 2 second pause between pages
-        } else if (currentPage === pages.length - 1) {
-          // Story finished
-          setIsAutoPlaying(false);
-        }
+    await playStoryPage(
+      story.id,
+      currentPage,
+      pages[currentPage],
+      narrationMode,
+      hasParentRecording,
+      {
+        rate: 0.78,
+        pitch: 1.0,
+        language: 'en-US',
+        voiceIdentifier: naturalVoice?.identifier,
       },
-      onStopped: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
+      {
+        onParentStart: () => {
+          setIsLoadingAudio(false);
+          setIsPlayingParentAudio(true);
+          setIsSpeaking(true);
+        },
+        onParentComplete: () => {
+          setIsPlayingParentAudio(false);
+          handlePlaybackComplete();
+        },
+        onParentFailed: () => setIsPlayingParentAudio(false),
+        onElevenLabsStart: () => {
+          // ElevenLabs audio has started playing
+          setIsLoadingAudio(false);
+          setIsSpeaking(true);
+          
+          // Pre-cache next page in background (fire-and-forget)
+          if (currentPage < pages.length - 1 && story) {
+            precacheAudio(story.id, currentPage + 1, pages[currentPage + 1], aiVoiceId)
+              .catch(() => {}); // Ignore errors
+          }
+        },
+        onElevenLabsFallback: () => {
+          // ElevenLabs failed, TTS starts immediately after this callback
+          setIsLoadingAudio(false);
+          setIsSpeaking(true);
+          console.log('ElevenLabs unavailable, using local TTS fallback');
+        },
+        onTTSComplete: handlePlaybackComplete,
+        onTTSStopped: () => {
+          setIsLoadingAudio(false);
+          setIsSpeaking(false);
+        },
+        onTTSError: () => {
+          setIsLoadingAudio(false);
+          setIsSpeaking(false);
+        },
+      },
+      aiVoiceId // Pass selected AI voice
+    );
   };
 
   const animatePageFlip = (callback: () => void) => {
@@ -466,16 +539,23 @@ export default function StoryViewScreen() {
     ]).start(callback);
   };
 
+  // Helper: stops all audio and clears pending auto-advance timeout
+  // Does NOT reset isAutoPlaying (caller decides)
+  const stopPlaybackAndClearTimeout = () => {
+    stopAllPlayback();
+    setIsLoadingAudio(false);
+    setIsSpeaking(false);
+    setIsPlayingParentAudio(false);
+    if (autoPlayTimeoutRef.current) {
+      clearTimeout(autoPlayTimeoutRef.current);
+    }
+  };
+
   const handlePlayPause = () => {
-    if (isSpeaking) {
-      Speech.stop();
-      stopAudioPlayback();
-      setIsSpeaking(false);
+    if (isSpeaking || isLoadingAudio) {
+      // Stop playback or cancel pending audio fetch
+      stopPlaybackAndClearTimeout();
       setIsAutoPlaying(false);
-      setIsPlayingParentAudio(false);
-      if (autoPlayTimeoutRef.current) {
-        clearTimeout(autoPlayTimeoutRef.current);
-      }
     } else {
       setIsAutoPlaying(true);
       playCurrentPage();
@@ -483,13 +563,7 @@ export default function StoryViewScreen() {
   };
 
   const handleNextPage = () => {
-    Speech.stop();
-    stopAudioPlayback();
-    setIsSpeaking(false);
-    setIsPlayingParentAudio(false);
-    if (autoPlayTimeoutRef.current) {
-      clearTimeout(autoPlayTimeoutRef.current);
-    }
+    stopPlaybackAndClearTimeout();
     if (currentPage < pages.length - 1) {
       animatePageFlip(() => {
         setCurrentPage(currentPage + 1);
@@ -498,13 +572,7 @@ export default function StoryViewScreen() {
   };
 
   const handlePrevPage = () => {
-    Speech.stop();
-    stopAudioPlayback();
-    setIsSpeaking(false);
-    setIsPlayingParentAudio(false);
-    if (autoPlayTimeoutRef.current) {
-      clearTimeout(autoPlayTimeoutRef.current);
-    }
+    stopPlaybackAndClearTimeout();
     if (currentPage > 0) {
       animatePageFlip(() => {
         setCurrentPage(currentPage - 1);
@@ -513,14 +581,9 @@ export default function StoryViewScreen() {
   };
 
   const handleClose = () => {
-    Speech.stop();
-    stopAudioPlayback();
+    stopPlaybackAndClearTimeout();
     stopListening();
     setIsAutoPlaying(false);
-    setIsPlayingParentAudio(false);
-    if (autoPlayTimeoutRef.current) {
-      clearTimeout(autoPlayTimeoutRef.current);
-    }
     router.replace('/child-home');
   };
 
@@ -555,174 +618,272 @@ export default function StoryViewScreen() {
     );
   }
 
-  // Mode Selection Screen
+  // Mode Selection Screen - Premium Children's App UI
   if (showModeModal) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
         <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-        <View style={styles.modeContainer}>
-          {/* Header */}
-          <View style={[styles.modeHeader, { backgroundColor: colors.accent }]}>
-            <TouchableOpacity style={styles.backButton} onPress={handleClose}>
-              <Text style={styles.backButtonText}>←</Text>
+        <ScrollView 
+          style={styles.modeContainer}
+          contentContainerStyle={styles.modeScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Premium Header with Back Button */}
+          <View style={styles.premiumHeader}>
+            <TouchableOpacity 
+              style={styles.backButtonPremium} 
+              onPress={handleClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.backIconText}>←</Text>
             </TouchableOpacity>
-            <View style={styles.modeHeaderContent}>
-              <Text style={styles.modeHeaderEmoji}>{emojis[0]}</Text>
-              <Text style={styles.modeHeaderTitle} numberOfLines={2}>{story.title}</Text>
+          </View>
+
+          {/* Hero Section - Large Book Illustration */}
+          <View style={styles.heroSection}>
+            <View style={[styles.heroIllustration, { backgroundColor: PREMIUM_COLORS.white }]}>
+              <LinearGradient
+                colors={(colors.gradient || ['#D0BCFF', '#8B5CF6']) as [string, string]}
+                style={styles.heroGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.heroEmoji}>{emojis[0]}</Text>
+              </LinearGradient>
+            </View>
+
+            {/* Story Title - Children's Book Style */}
+            <Text style={styles.heroTitle}>{story.title}</Text>
+            
+            {/* Story Meta */}
+            <View style={styles.storyMeta}>
+              <View style={styles.metaBadge}>
+                <Text style={styles.metaEmoji}>📖</Text>
+                <Text style={styles.metaText}>{pages.length} pages</Text>
+              </View>
+              {story.theme && (
+                <View style={[styles.metaBadge, { backgroundColor: '#E8DEF8' }]}>
+                  <Text style={styles.metaEmoji}>✨</Text>
+                  <Text style={styles.metaText}>{story.theme}</Text>
+                </View>
+              )}
             </View>
           </View>
 
-          <View style={styles.modeContent}>
-            <Text style={styles.modeQuestion}>How do you want to read? 🤔</Text>
+          {/* How Would You Like to Read? */}
+          <Text style={styles.modeQuestion}>How would you like to read?</Text>
 
-            {/* Read to Me Option */}
+          {/* Reading Mode Cards - Premium Design */}
+          <View style={styles.modeCardsContainer}>
+            
+            {/* 📖 Read Myself Card */}
             <TouchableOpacity
-              style={[styles.modeCard, { backgroundColor: '#FFE4EC' }]}
+              style={[styles.premiumModeCard, { backgroundColor: PREMIUM_COLORS.cardBlue }]}
+              onPress={() => handleSelectMode('read-myself')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#60A5FA', '#3B82F6']}
+                style={styles.modeIconGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.modeIconLarge}>📖</Text>
+              </LinearGradient>
+              <View style={styles.modeCardTextContainer}>
+                <Text style={[styles.modeCardTitlePremium, { color: '#1E40AF' }]}>
+                  Read Myself
+                </Text>
+                <Text style={styles.modeCardDescPremium}>
+                  Turn pages at your own pace
+                </Text>
+              </View>
+              <View style={styles.modeArrow}>
+                <Text style={styles.arrowText}>→</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* 🔊 Listen to Story Card */}
+            <TouchableOpacity
+              style={[styles.premiumModeCard, { backgroundColor: PREMIUM_COLORS.cardPink }]}
               onPress={() => handleSelectMode('read-to-me')}
-              activeOpacity={0.8}
+              activeOpacity={0.85}
             >
-              <View style={[styles.modeIconCircle, { backgroundColor: '#FF6B9D' }]}>
-                <Text style={styles.modeIcon}>🔊</Text>
-              </View>
-              <View style={styles.modeCardContent}>
-                <Text style={styles.modeCardTitle}>Read to Me! 📖</Text>
-                <Text style={styles.modeCardDesc}>
-                  Sit back and listen to the story! Pages turn automatically.
+              <LinearGradient
+                colors={['#F472B6', '#EC4899']}
+                style={styles.modeIconGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.modeIconLarge}>🔊</Text>
+              </LinearGradient>
+              <View style={styles.modeCardTextContainer}>
+                <Text style={[styles.modeCardTitlePremium, { color: '#BE185D' }]}>
+                  Listen to Story
                 </Text>
-                <View style={styles.modeBadges}>
-                  <View style={[styles.modeBadge, { backgroundColor: '#FFB8D9' }]}>
-                    <Text style={styles.modeBadgeText}>🎧 Listens</Text>
-                  </View>
-                  <View style={[styles.modeBadge, { backgroundColor: '#FFB8D9' }]}>
-                    <Text style={styles.modeBadgeText}>✨ Auto-flip</Text>
-                  </View>
-                </View>
+                <Text style={styles.modeCardDescPremium}>
+                  Sit back and enjoy the narration
+                </Text>
+              </View>
+              <View style={styles.modeArrow}>
+                <Text style={styles.arrowText}>→</Text>
               </View>
             </TouchableOpacity>
 
-            {/* Help Me Read Option */}
-            <TouchableOpacity
-              style={[styles.modeCard, { backgroundColor: '#E4FFE4' }]}
-              onPress={() => handleSelectMode('help-me-read')}
-              activeOpacity={0.8}
+            {/* ✨ Read with Help Card - Coming Soon */}
+            <View
+              style={[styles.premiumModeCard, { backgroundColor: '#F3F4F6', opacity: 0.7 }]}
             >
-              <View style={[styles.modeIconCircle, { backgroundColor: '#4CAF50' }]}>
-                <Text style={styles.modeIcon}>🎤</Text>
+              <View
+                style={[styles.modeIconGradient, { backgroundColor: '#9CA3AF' }]}
+              >
+                <Text style={styles.modeIconLarge}>✨</Text>
               </View>
-              <View style={styles.modeCardContent}>
-                <Text style={[styles.modeCardTitle, { color: '#2E7D32' }]}>Help Me Read! 🌟</Text>
-                <Text style={styles.modeCardDesc}>
-                  Read along yourself! Tap to hear words when you need help.
+              <View style={styles.modeCardTextContainer}>
+                <Text style={[styles.modeCardTitlePremium, { color: '#6B7280' }]}>
+                  Read with Help
                 </Text>
-                <View style={styles.modeBadges}>
-                  <View style={[styles.modeBadge, { backgroundColor: '#A5D6A7' }]}>
-                    <Text style={styles.modeBadgeText}>💪 Practice</Text>
-                  </View>
-                  <View style={[styles.modeBadge, { backgroundColor: '#A5D6A7' }]}>
-                    <Text style={styles.modeBadgeText}>⭐ Learn</Text>
-                  </View>
-                </View>
+                <Text style={styles.modeCardDescPremium}>
+                  Coming Soon!
+                </Text>
               </View>
-            </TouchableOpacity>
+              <View style={styles.modeArrow}>
+                <Text style={[styles.arrowText, { color: '#9CA3AF' }]}>🔒</Text>
+              </View>
+            </View>
           </View>
-        </View>
+
+          {/* Fun Footer Message */}
+          <View style={styles.funFooter}>
+            <Text style={styles.funFooterText}>✨ Let's start the adventure! ✨</Text>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // Story Reading View
+  // Story Reading View - Premium Children's App UI
   const pageScale = flipAnim.interpolate({
     inputRange: [0, 0.5, 1],
     outputRange: [1, 0.95, 1],
   });
 
+  const getModeLabel = () => {
+    switch (selectedMode) {
+      case 'read-to-me': return '🔊 Listen Mode';
+      case 'read-myself': return '📖 Reading Mode';
+      case 'help-me-read': return '✨ Practice Mode';
+      default: return '📖 Reading';
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <View style={styles.readerContainer}>
-        {/* Header */}
-        <View style={[styles.readerHeader, { backgroundColor: colors.accent }]}>
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <Text style={styles.closeButtonText}>✕</Text>
+        {/* Premium Header */}
+        <View style={styles.premiumReaderHeader}>
+          <TouchableOpacity 
+            style={styles.closeButtonPremium} 
+            onPress={handleClose}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeIconText}>✕</Text>
           </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerEmoji}>{emojis[0]}</Text>
-            <Text style={styles.headerMode}>
-              {selectedMode === 'read-to-me' ? '🔊 Reading Mode' : '🎤 Practice Mode'}
+          
+          <View style={styles.headerTitleArea}>
+            <Text style={styles.readerHeaderTitle} numberOfLines={1}>
+              {story.title}
             </Text>
+            <View style={[styles.modeBadgePremium, { backgroundColor: colors.accent }]}>
+              <Text style={styles.modeBadgeTextPremium}>{getModeLabel()}</Text>
+            </View>
           </View>
-          <View style={styles.pageIndicator}>
-            <Text style={styles.pageText}>{currentPage + 1}/{pages.length}</Text>
+          
+          <View style={styles.pageCountBadge}>
+            <Text style={styles.pageCountText}>{currentPage + 1}/{pages.length}</Text>
           </View>
         </View>
 
-        {/* Progress Bar */}
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBg}>
-            <View 
+        {/* Premium Progress Bar */}
+        <View style={styles.premiumProgressContainer}>
+          <View style={styles.premiumProgressBg}>
+            <LinearGradient
+              colors={(colors.gradient || ['#D0BCFF', '#8B5CF6']) as [string, string]}
               style={[
-                styles.progressFill, 
-                { 
-                  width: `${((currentPage + 1) / pages.length) * 100}%`,
-                  backgroundColor: colors.accent 
-                }
-              ]} 
+                styles.premiumProgressFill, 
+                { width: `${((currentPage + 1) / pages.length) * 100}%` }
+              ]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
             />
           </View>
+          <View style={styles.progressStars}>
+            {pages.map((_, idx) => (
+              <Text key={idx} style={styles.progressStar}>
+                {idx <= currentPage ? '⭐' : '☆'}
+              </Text>
+            ))}
+          </View>
         </View>
 
-        {/* Story Content */}
+        {/* Premium Story Card */}
         <Animated.View 
           style={[
-            styles.storyCard, 
-            { 
-              backgroundColor: '#FFFFFF',
-              transform: [{ scale: pageScale }]
-            }
+            styles.premiumStoryCard, 
+            { transform: [{ scale: pageScale }] }
           ]}
         >
-          {/* Large Emoji Illustration */}
-          <View style={[styles.illustrationBox, { backgroundColor: colors.accent }]}>
-            <Text style={styles.illustrationEmoji}>{emoji}</Text>
+          {/* Large Hero Illustration */}
+          <View style={styles.premiumIllustration}>
+            <LinearGradient
+              colors={(colors.gradient || ['#D0BCFF', '#8B5CF6']) as [string, string]}
+              style={styles.illustrationGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.premiumEmoji}>{emoji}</Text>
+            </LinearGradient>
           </View>
 
           {/* Feedback Message */}
           {feedback.type && (
-            <View style={[
-              styles.feedbackBanner,
-              { backgroundColor: feedback.type === 'correct' ? '#E6FFE6' : '#FFE6E6' }
+            <Animated.View style={[
+              styles.premiumFeedbackBanner,
+              { backgroundColor: feedback.type === 'correct' ? '#D1FAE5' : '#FEE2E2' }
             ]}>
               <Text style={[
-                styles.feedbackText,
-                { color: feedback.type === 'correct' ? '#2E7D32' : '#C62828' }
+                styles.premiumFeedbackText,
+                { color: feedback.type === 'correct' ? '#065F46' : '#991B1B' }
               ]}>
                 {feedback.message}
               </Text>
-            </View>
+            </Animated.View>
           )}
 
           {/* Great Job Banner */}
           {showGreatJob && (
-            <View style={styles.greatJobBanner}>
-              <Text style={styles.greatJobText}>🎉 Page Complete! Great Reading! 🌟</Text>
+            <View style={styles.premiumGreatJobBanner}>
+              <Text style={styles.premiumGreatJobText}>🎉 Amazing! Great Reading! 🌟</Text>
             </View>
           )}
 
-          {/* Story Text - Different display for each mode */}
-          <View style={styles.textContainer}>
+          {/* Story Text Area */}
+          <View style={styles.premiumTextContainer}>
             {selectedMode === 'help-me-read' ? (
               // Word-by-word display with highlighting
-              <View style={styles.wordsContainer}>
+              <View style={styles.premiumWordsContainer}>
                 {pageWords.map((word, index) => (
                   <TouchableOpacity
                     key={index}
                     onPress={() => speakWord(word)}
                     activeOpacity={0.7}
+                    style={styles.wordTouchable}
                   >
                     <Text style={[
-                      styles.wordText,
-                      index === currentWordIndex && styles.currentWord,
-                      index < currentWordIndex && styles.completedWord,
+                      styles.premiumWordText,
+                      index === currentWordIndex && styles.premiumCurrentWord,
+                      index < currentWordIndex && styles.premiumCompletedWord,
                     ]}>
                       {word}{' '}
                     </Text>
@@ -730,120 +891,152 @@ export default function StoryViewScreen() {
                 ))}
               </View>
             ) : (
-              // Regular text display for "Read to Me"
-              <Text style={styles.storyText}>{pages[currentPage]}</Text>
+              // Regular text display
+              <Text style={styles.premiumStoryText}>{pages[currentPage]}</Text>
             )}
           </View>
 
           {/* Word Progress (Help Me Read mode only) */}
           {selectedMode === 'help-me-read' && (
-            <View style={styles.wordProgressContainer}>
-              <Text style={styles.wordProgressText}>
-                Words: {currentWordIndex}/{pageWords.length} ⭐
-              </Text>
-            </View>
-          )}
-
-          {/* Audio Control - Different for each mode */}
-          {selectedMode === 'read-to-me' ? (
-            <TouchableOpacity
-              style={[
-                styles.audioButton,
-                { backgroundColor: isSpeaking ? '#FF6B6B' : colors.accent }
-              ]}
-              onPress={handlePlayPause}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.audioButtonEmoji}>
-                {isSpeaking ? '⏸️' : '▶️'}
-              </Text>
-              <Text style={styles.audioButtonText}>
-                {isSpeaking ? 'Pause' : 'Play Story'}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            // Help Me Read controls
-            <View style={styles.helpMeReadControls}>
-              <TouchableOpacity
-                style={[
-                  styles.listenButton,
-                  { backgroundColor: isListening ? '#FF6B6B' : '#4CAF50' }
-                ]}
-                onPress={isListening ? stopListening : startListening}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.listenButtonEmoji}>
-                  {isListening ? '⏹️' : '🎤'}
-                </Text>
-                <Text style={styles.listenButtonText}>
-                  {isListening ? 'Stop Listening' : 'Start Reading!'}
-                </Text>
-              </TouchableOpacity>
-              
-              {isListening && (
-                <View style={styles.listeningIndicator}>
-                  <Text style={styles.listeningDot}>🔴</Text>
-                  <Text style={styles.listeningText}>I'm listening...</Text>
-                </View>
-              )}
-              
-              <Text style={styles.helpText}>
-                💡 Tap any word to hear it!
+            <View style={styles.premiumWordProgress}>
+              <View style={styles.wordProgressBar}>
+                <View 
+                  style={[
+                    styles.wordProgressFill,
+                    { width: `${(currentWordIndex / Math.max(pageWords.length, 1)) * 100}%` }
+                  ]} 
+                />
+              </View>
+              <Text style={styles.premiumWordProgressText}>
+                {currentWordIndex}/{pageWords.length} words ⭐
               </Text>
             </View>
           )}
         </Animated.View>
 
-        {/* Navigation */}
-        <View style={styles.navigation}>
-          <TouchableOpacity
-            style={[
-              styles.navButton,
-              currentPage === 0 && styles.navButtonDisabled
-            ]}
-            onPress={handlePrevPage}
-            disabled={currentPage === 0}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonEmoji}>⬅️</Text>
-            <Text style={styles.navButtonLabel}>Back</Text>
-          </TouchableOpacity>
+        {/* Premium Control Area */}
+        <View style={styles.premiumControlArea}>
+          {/* Audio Controls based on mode */}
+          {selectedMode === 'read-to-me' && (
+            <TouchableOpacity
+              style={[
+                styles.premiumPlayButton,
+                { backgroundColor: isLoadingAudio ? '#FDE68A' : isSpeaking ? '#FCA5A5' : colors.accent }
+              ]}
+              onPress={handlePlayPause}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.premiumPlayEmoji}>
+                {isLoadingAudio ? '⏳' : isSpeaking ? '⏸️' : '▶️'}
+              </Text>
+              <Text style={styles.premiumPlayText}>
+                {isLoadingAudio ? 'Loading...' : isSpeaking ? 'Pause' : 'Play'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
-          <View style={styles.pageDotsContainer}>
-            {pages.map((_, idx) => (
-              <View
-                key={idx}
+          {selectedMode === 'help-me-read' && (
+            <View style={styles.helpMeReadControlsPremium}>
+              <TouchableOpacity
                 style={[
-                  styles.pageDot,
-                  idx === currentPage && { backgroundColor: colors.accent, transform: [{ scale: 1.3 }] }
+                  styles.premiumMicButton,
+                  { backgroundColor: isListening ? '#FCA5A5' : '#86EFAC' }
                 ]}
-              />
-            ))}
-          </View>
+                onPress={isListening ? stopListening : startListening}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.premiumMicEmoji}>
+                  {isListening ? '⏹️' : '🎤'}
+                </Text>
+                <Text style={styles.premiumMicText}>
+                  {isListening ? 'Stop' : 'Read Aloud'}
+                </Text>
+              </TouchableOpacity>
+              
+              {isListening && (
+                <View style={styles.listeningPulse}>
+                  <Text style={styles.pulseText}>🔴 Listening...</Text>
+                </View>
+              )}
+              
+              <Text style={styles.helpHintText}>
+                💡 Tap words you don't know!
+              </Text>
+            </View>
+          )}
 
-          <TouchableOpacity
-            style={[
-              styles.navButton,
-              currentPage === pages.length - 1 && styles.navButtonDisabled
-            ]}
-            onPress={handleNextPage}
-            disabled={currentPage === pages.length - 1}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.navButtonEmoji}>➡️</Text>
-            <Text style={styles.navButtonLabel}>Next</Text>
-          </TouchableOpacity>
+          {/* Premium Navigation Buttons */}
+          <View style={styles.premiumNavigation}>
+            <TouchableOpacity
+              style={[
+                styles.premiumNavButton,
+                currentPage === 0 && styles.premiumNavButtonDisabled
+              ]}
+              onPress={handlePrevPage}
+              disabled={currentPage === 0}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={currentPage === 0 ? ['#E5E7EB', '#D1D5DB'] : ['#A78BFA', '#8B5CF6']}
+                style={styles.navButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.premiumNavEmoji}>←</Text>
+              </LinearGradient>
+              <Text style={styles.premiumNavLabel}>Back</Text>
+            </TouchableOpacity>
+
+            <View style={styles.premiumPageDots}>
+              {pages.map((_, idx) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.premiumPageDot,
+                    idx === currentPage && [styles.premiumPageDotActive, { backgroundColor: colors.accent }]
+                  ]}
+                />
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.premiumNavButton,
+                currentPage === pages.length - 1 && styles.premiumNavButtonDisabled
+              ]}
+              onPress={handleNextPage}
+              disabled={currentPage === pages.length - 1}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={currentPage === pages.length - 1 ? ['#E5E7EB', '#D1D5DB'] : ['#A78BFA', '#8B5CF6']}
+                style={styles.navButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.premiumNavEmoji}>→</Text>
+              </LinearGradient>
+              <Text style={styles.premiumNavLabel}>Next</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Finish Button (on last page) */}
+        {/* Premium Finish Button (on last page) */}
         {currentPage === pages.length - 1 && (
           <TouchableOpacity
-            style={[styles.finishButton, { backgroundColor: '#4CAF50' }]}
+            style={styles.premiumFinishButton}
             onPress={handleClose}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.finishButtonEmoji}>🎉</Text>
-            <Text style={styles.finishButtonText}>Finished! Go Back</Text>
+            <LinearGradient
+              colors={['#4ADE80', '#22C55E']}
+              style={styles.finishButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.premiumFinishEmoji}>🎉</Text>
+              <Text style={styles.premiumFinishText}>All Done! Great Job!</Text>
+            </LinearGradient>
           </TouchableOpacity>
         )}
       </View>
@@ -852,22 +1045,25 @@ export default function StoryViewScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Base
   safeArea: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
+  
+  // Loading & Error States
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
+    fontSize: 80,
+    marginBottom: 20,
   },
   loadingText: {
-    fontSize: 18,
-    color: '#666666',
+    fontSize: 20,
+    color: PREMIUM_COLORS.textDark,
     fontWeight: '600',
   },
   errorContainer: {
@@ -877,401 +1073,580 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   errorEmoji: {
-    fontSize: 72,
-    marginBottom: 16,
+    fontSize: 80,
+    marginBottom: 20,
   },
   errorText: {
-    fontSize: 20,
-    color: '#333333',
+    fontSize: 22,
+    color: PREMIUM_COLORS.textDark,
     fontWeight: '700',
     marginBottom: 24,
   },
   errorButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 16,
+    backgroundColor: '#4ADE80',
+    paddingVertical: 16,
+    paddingHorizontal: 36,
+    borderRadius: 24,
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   errorButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: PREMIUM_COLORS.white,
+    fontSize: 18,
     fontWeight: '700',
   },
-  // Mode Selection
+
+  // ========== MODE SELECTION PREMIUM STYLES ==========
   modeContainer: {
     flex: 1,
   },
-  modeHeader: {
+  modeScrollContent: {
+    paddingBottom: 40,
+  },
+  premiumHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.4)',
+  backButtonPremium: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: PREMIUM_COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  backButtonText: {
+  backIconText: {
     fontSize: 24,
-    color: '#333333',
-    fontWeight: '700',
+    color: PREMIUM_COLORS.textDark,
+    fontWeight: '600',
   },
-  modeHeaderContent: {
+  
+  // Hero Section
+  heroSection: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  heroIllustration: {
+    width: SCREEN_WIDTH * 0.55,
+    aspectRatio: 1,
+    borderRadius: 32,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 12,
+    marginBottom: 24,
+  },
+  heroGradient: {
     flex: 1,
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  modeHeaderEmoji: {
-    fontSize: 36,
-    marginRight: 12,
+  heroEmoji: {
+    fontSize: 100,
   },
-  modeHeaderTitle: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333333',
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: PREMIUM_COLORS.textDark,
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 36,
+    paddingHorizontal: 16,
   },
-  modeContent: {
-    flex: 1,
-    padding: 20,
+  storyMeta: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
   },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: PREMIUM_COLORS.cream,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  metaEmoji: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  metaText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: PREMIUM_COLORS.textDark,
+  },
+  
+  // Mode Question
   modeQuestion: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#333333',
+    color: PREMIUM_COLORS.textDark,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
+    paddingHorizontal: 24,
   },
-  modeCard: {
+  
+  // Premium Mode Cards
+  modeCardsContainer: {
+    paddingHorizontal: 20,
+    gap: 14,
+  },
+  premiumModeCard: {
     flexDirection: 'row',
-    padding: 16,
-    borderRadius: 20,
-    marginBottom: 16,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    padding: 18,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  modeIconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  modeIconGradient: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
   },
-  modeIcon: {
-    fontSize: 28,
+  modeIconLarge: {
+    fontSize: 32,
   },
-  modeCardContent: {
+  modeCardTextContainer: {
     flex: 1,
   },
-  modeCardTitle: {
+  modeCardTitlePremium: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#C2185B',
     marginBottom: 4,
   },
-  modeCardDesc: {
+  modeCardDescPremium: {
     fontSize: 14,
-    color: '#555555',
+    color: PREMIUM_COLORS.textMuted,
     lineHeight: 20,
-    marginBottom: 8,
   },
-  modeBadges: {
-    flexDirection: 'row',
-    gap: 8,
+  modeArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  modeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  arrowText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: PREMIUM_COLORS.textDark,
   },
-  modeBadgeText: {
-    fontSize: 12,
+  
+  // Fun Footer
+  funFooter: {
+    alignItems: 'center',
+    paddingTop: 28,
+    paddingBottom: 20,
+  },
+  funFooterText: {
+    fontSize: 18,
     fontWeight: '600',
-    color: '#333333',
+    color: PREMIUM_COLORS.textMuted,
   },
-  // Reader
+
+  // ========== READER PREMIUM STYLES ==========
   readerContainer: {
     flex: 1,
   },
-  readerHeader: {
+  premiumReaderHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.4)',
+  closeButtonPremium: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: PREMIUM_COLORS.white,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  closeButtonText: {
+  closeIconText: {
     fontSize: 20,
-    color: '#333333',
+    color: PREMIUM_COLORS.textDark,
     fontWeight: '700',
   },
-  headerCenter: {
-    flexDirection: 'row',
+  headerTitleArea: {
+    flex: 1,
     alignItems: 'center',
+    paddingHorizontal: 12,
   },
-  headerEmoji: {
-    fontSize: 24,
-    marginRight: 8,
+  readerHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: PREMIUM_COLORS.textDark,
+    marginBottom: 6,
   },
-  headerMode: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    paddingHorizontal: 10,
+  modeBadgePremium: {
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  pageIndicator: {
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
+  modeBadgeTextPremium: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: PREMIUM_COLORS.white,
   },
-  pageText: {
+  pageCountBadge: {
+    backgroundColor: PREMIUM_COLORS.white,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  pageCountText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#333333',
+    color: PREMIUM_COLORS.textDark,
   },
-  progressContainer: {
+  
+  // Premium Progress
+  premiumProgressContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
-  progressBg: {
-    height: 8,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 4,
+  premiumProgressBg: {
+    height: 10,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    borderRadius: 5,
     overflow: 'hidden',
   },
-  progressFill: {
+  premiumProgressFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 5,
   },
-  storyCard: {
+  progressStars: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 10,
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  progressStar: {
+    fontSize: 16,
+  },
+  
+  // Premium Story Card
+  premiumStoryCard: {
     flex: 1,
     margin: 16,
-    borderRadius: 24,
+    backgroundColor: PREMIUM_COLORS.white,
+    borderRadius: 28,
     padding: 20,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  illustrationBox: {
-    width: SCREEN_WIDTH * 0.5,
+  premiumIllustration: {
+    width: SCREEN_WIDTH * 0.45,
     aspectRatio: 1,
-    borderRadius: 20,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  illustrationGradient: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
   },
-  illustrationEmoji: {
-    fontSize: 80,
+  premiumEmoji: {
+    fontSize: 72,
   },
-  textContainer: {
+  
+  // Feedback
+  premiumFeedbackBanner: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+    marginBottom: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  premiumFeedbackText: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  premiumGreatJobBanner: {
+    backgroundColor: '#FEF9C3',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    marginBottom: 14,
+    borderWidth: 2,
+    borderColor: '#FDE047',
+  },
+  premiumGreatJobText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#A16207',
+    textAlign: 'center',
+  },
+  
+  // Text Area
+  premiumTextContainer: {
     flex: 1,
     width: '100%',
     justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  storyText: {
-    fontSize: 20,
-    color: '#333333',
+  premiumStoryText: {
+    fontSize: 22,
+    color: PREMIUM_COLORS.textDark,
     textAlign: 'center',
-    lineHeight: 32,
+    lineHeight: 34,
     fontWeight: '500',
   },
-  audioButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 20,
-    marginTop: 16,
-  },
-  audioButtonEmoji: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  audioButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333333',
-  },
-  navigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  navButton: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  navButtonDisabled: {
-    opacity: 0.3,
-  },
-  navButtonEmoji: {
-    fontSize: 28,
-    marginBottom: 4,
-  },
-  navButtonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666666',
-  },
-  pageDotsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  pageDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#D0D0D0',
-  },
-  finishButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    paddingVertical: 16,
-    borderRadius: 20,
-  },
-  finishButtonEmoji: {
-    fontSize: 24,
-    marginRight: 8,
-  },
-  finishButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  // Help Me Read styles
-  wordsContainer: {
+  premiumWordsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  wordText: {
-    fontSize: 22,
-    color: '#666666',
-    lineHeight: 36,
+  wordTouchable: {
+    marginVertical: 2,
+  },
+  premiumWordText: {
+    fontSize: 24,
+    color: PREMIUM_COLORS.textMuted,
+    lineHeight: 40,
     fontWeight: '500',
   },
-  currentWord: {
-    color: '#1976D2',
-    backgroundColor: '#E3F2FD',
+  premiumCurrentWord: {
+    color: '#2563EB',
+    backgroundColor: '#DBEAFE',
     fontWeight: '700',
-    borderRadius: 4,
-    paddingHorizontal: 2,
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
   },
-  completedWord: {
-    color: '#4CAF50',
+  premiumCompletedWord: {
+    color: '#16A34A',
     fontWeight: '600',
   },
-  feedbackBanner: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+  
+  // Word Progress
+  premiumWordProgress: {
+    width: '100%',
+    marginTop: 16,
     alignItems: 'center',
   },
-  feedbackText: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  greatJobBanner: {
-    backgroundColor: '#FFF3E0',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#FFB74D',
-  },
-  greatJobText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#E65100',
-    textAlign: 'center',
-  },
-  wordProgressContainer: {
-    marginTop: 12,
+  wordProgressBar: {
+    width: '80%',
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
     marginBottom: 8,
   },
-  wordProgressText: {
-    fontSize: 16,
+  wordProgressFill: {
+    height: '100%',
+    backgroundColor: '#4ADE80',
+    borderRadius: 4,
+  },
+  premiumWordProgressText: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666666',
-    textAlign: 'center',
+    color: PREMIUM_COLORS.textMuted,
   },
-  helpMeReadControls: {
-    alignItems: 'center',
-    marginTop: 16,
+  
+  // Premium Controls
+  premiumControlArea: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    backgroundColor: PREMIUM_COLORS.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  listenButton: {
+  premiumPlayButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 24,
-    minWidth: 200,
-    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 16,
+    marginTop: 16,
+    minWidth: 160,
   },
-  listenButtonEmoji: {
+  premiumPlayEmoji: {
     fontSize: 24,
     marginRight: 10,
   },
-  listenButtonText: {
+  premiumPlayText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: PREMIUM_COLORS.textDark,
   },
-  listeningIndicator: {
+  
+  // Help Me Read Controls
+  helpMeReadControlsPremium: {
+    alignItems: 'center',
+    paddingTop: 16,
+  },
+  premiumMicButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 24,
+    minWidth: 180,
+  },
+  premiumMicEmoji: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  premiumMicText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: PREMIUM_COLORS.textDark,
+  },
+  listeningPulse: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 16,
   },
-  listeningDot: {
-    fontSize: 12,
-    marginRight: 6,
-  },
-  listeningText: {
+  pulseText: {
     fontSize: 14,
-    color: '#666666',
-    fontStyle: 'italic',
+    color: '#991B1B',
+    fontWeight: '600',
   },
-  helpText: {
+  helpHintText: {
     marginTop: 12,
     fontSize: 14,
-    color: '#888888',
+    color: PREMIUM_COLORS.textMuted,
     textAlign: 'center',
+  },
+  
+  // Premium Navigation
+  premiumNavigation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  premiumNavButton: {
+    alignItems: 'center',
+  },
+  premiumNavButtonDisabled: {
+    opacity: 0.4,
+  },
+  navButtonGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  premiumNavEmoji: {
+    fontSize: 24,
+    color: PREMIUM_COLORS.white,
+    fontWeight: '700',
+  },
+  premiumNavLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: PREMIUM_COLORS.textMuted,
+  },
+  premiumPageDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 20,
+  },
+  premiumPageDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#E5E7EB',
+  },
+  premiumPageDotActive: {
+    transform: [{ scale: 1.4 }],
+  },
+  
+  // Premium Finish Button
+  premiumFinishButton: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  finishButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+  },
+  premiumFinishEmoji: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  premiumFinishText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: PREMIUM_COLORS.white,
   },
 });

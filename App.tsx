@@ -1,9 +1,18 @@
+/**
+ * @deprecated LEGACY FILE - NOT USED BY EXPO ROUTER
+ * 
+ * This App.tsx file is from the old React Navigation setup.
+ * The current app uses Expo Router with file-based routing in app/_layout.tsx.
+ * 
+ * This file is kept for reference but is NOT used when running the app.
+ * The actual entry point is configured in package.json ("main": "expo-router/entry").
+ */
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 
 import ChildHomeScreen from './screens/ChildHomeScreen';
-import ParentGateScreen from './screens/ParentGateScreen';
 import ParentHomeScreen from './screens/ParentHomeScreen';
 
 // Define the types for our navigation routes
@@ -35,11 +44,7 @@ export default function App() {
           component={ChildHomeScreen}
           options={{ title: 'ToggleTail' }}
         />
-        <Stack.Screen
-          name="ParentGate"
-          component={ParentGateScreen}
-          options={{ title: 'Parent Access' }}
-        />
+        {/* ParentGate screen removed - use Expo Router app/parent-gate.tsx instead */}
         <Stack.Screen
           name="ParentHome"
           component={ParentHomeScreen}

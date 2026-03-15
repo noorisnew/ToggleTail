@@ -1,25 +1,23 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Colors } from '../constants/design';
-import { ONBOARDING_KEY } from '../src/data/storage/storageKeys';
+import { ActivityIndicator, View } from 'react-native';
+import { getProfile } from '../src/data/storage/profileStorage';
 
 export default function Index() {
   const [isLoading, setIsLoading] = useState(true);
-  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [hasProfile, setHasProfile] = useState(false);
 
   useEffect(() => {
-    checkOnboarding();
+    checkProfile();
   }, []);
 
-  const checkOnboarding = async () => {
+  const checkProfile = async () => {
     try {
-      const value = await AsyncStorage.getItem(ONBOARDING_KEY);
-      setOnboardingDone(value === 'true');
+      const profile = await getProfile();
+      setHasProfile(!!profile);
     } catch (error) {
-      console.error('checkOnboarding error:', error);
-      setOnboardingDone(false);
+      console.error('Error checking profile:', error);
+      setHasProfile(false);
     } finally {
       setIsLoading(false);
     }
@@ -27,24 +25,17 @@ export default function Index() {
 
   if (isLoading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.primaryStart} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F3E8FF' }}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
       </View>
     );
   }
 
-  if (onboardingDone) {
-    return <Redirect href="/child-home" />;
+  // If no profile exists, go to onboarding
+  if (!hasProfile) {
+    return <Redirect href="/onboarding/welcome" />;
   }
 
-  return <Redirect href="/onboarding/welcome" />;
+  // Otherwise go to main child home screen
+  return <Redirect href="/child-home" />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-  },
-});
