@@ -11,6 +11,9 @@ import {
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export type CachedLibraryStory = {
+  /** Numeric primary key from MySQL backend — present when fetched from the API. */
+  id?: number;
+  /** String identifier — present for preloaded stories and as a backend alias. */
   _id: string;
   title: string;
   category: string;
@@ -104,7 +107,10 @@ export async function getCachedStoryContent(storyId: string): Promise<CachedLibr
  */
 export async function cacheStoryContent(story: CachedLibraryStory): Promise<void> {
   try {
-    const key = `${STORY_CONTENT_CACHE_PREFIX}${story._id}`;
+    // Prefer _id (preloaded stories / MongoDB-style), fall back to id.toString().
+    const storyKey = story._id || story.id?.toString() || '';
+    if (!storyKey) return;
+    const key = `${STORY_CONTENT_CACHE_PREFIX}${storyKey}`;
     await AsyncStorage.setItem(key, JSON.stringify(story));
   } catch (error) {
     console.error('cacheStoryContent error:', normalizeError(error));

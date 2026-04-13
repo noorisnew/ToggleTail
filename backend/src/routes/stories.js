@@ -61,7 +61,9 @@ const formatStory = (story) => {
         .sort((a, b) => a.pageIndex - b.pageIndex)
         .map((p) => p.content)
     : undefined;
-  return { ...story, pages };
+  // Include _id as a string alias for id so the React Native frontend,
+  // which was originally built against MongoDB ObjectIds, works without changes.
+  return { ...story, _id: story.id.toString(), pages };
 };
 
 // ─── Reading-level / interest configuration ───────────────────────────────────
@@ -112,9 +114,12 @@ router.get('/library', async (req, res) => {
       prisma.story.count({ where }),
     ]);
 
+    // Add _id string alias so the frontend (built against MongoDB ObjectIds) works unchanged.
+    const storiesWithAlias = stories.map((s) => ({ ...s, _id: s.id.toString() }));
+
     res.json({
       success: true,
-      stories,
+      stories: storiesWithAlias,
       pagination: {
         total,
         limit:   parseInt(limit,  10),
@@ -268,6 +273,64 @@ router.get('/parent/all', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Get parent stories error:', error.message);
     res.status(500).json({ error: 'Could not fetch stories' });
+  }
+});
+
+// ─── POST /api/stories/suggest ───────────────────────────────────────────────
+// Returns story title suggestions based on child interests.
+// Declared before /:id so Express does not treat "suggest" as an ID.
+router.post('/suggest', async (req, res) => {
+  try {
+    const { interests = [], count = 3 } = req.body;
+
+    // If OpenAI is available, generate personalised suggestions.
+    if (process.env.OPENAI_API_KEY) {
+      const interestText = interests.length > 0 ? interests.join(', ') : 'adventure, animals, magic';
+
+      const completion = await getOpenAI().chat.completions.create({
+        model:    'gpt-4o-mini',
+        messages: [{
+          role:    'user',
+          content: `Generate ${count} creative children's story title suggestions based on these interests: ${interestText}.
+Return a JSON object with a "suggestions" array. Each item must have "title" (3-5 words), "theme" (matching one interest), and "description" (one sentence).
+Example: {"suggestions":[{"title":"The Dragon Who Baked","theme":"Dragons & Magic","description":"A tiny dragon discovers her true talent is baking magical cookies."}]}`,
+        }],
+        max_tokens:      300,
+        temperature:     0.9,
+        response_format: { type: 'json_object' },
+      });
+
+      try {
+        const parsed     = JSON.parse(completion.choices[0]?.message?.content || '{}');
+        const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+        if (suggestions.length > 0) {
+          return res.json({ suggestions: suggestions.slice(0, count), fallback: false });
+        }
+      } catch {
+        // Fall through to static fallback
+      }
+    }
+
+    // Static fallback — always works even without OpenAI.
+    const FALLBACK = {
+      'Super Heroes':     { title: "The Brave Hero's Quest",    theme: 'Super Heroes' },
+      'Dragons & Magic':  { title: 'The Friendly Dragon',       theme: 'Dragons & Magic' },
+      'Fairy Tales':      { title: 'The Princess and the Star', theme: 'Fairy Tales' },
+      'Mystery & Puzzles':{ title: 'The Secret of the Lost Key',theme: 'Mystery & Puzzles' },
+      'Dinosaurs':        { title: "Dino's Big Day",            theme: 'Dinosaurs' },
+      'Ocean Adventures': { title: 'Under the Sea Adventure',   theme: 'Ocean Adventures' },
+      'Cute Animals':     { title: 'The Forest Friends',        theme: 'Cute Animals' },
+      'Space & Robots':   { title: "Robot's Space Journey",     theme: 'Space & Robots' },
+    };
+
+    const suggestions = interests.length > 0
+      ? interests.slice(0, count).map((i) => FALLBACK[i] || { title: 'A Magical Story', theme: i })
+      : Object.values(FALLBACK).slice(0, count);
+
+    res.json({ suggestions, fallback: true });
+  } catch (error) {
+    console.error('Suggest stories error:', error.message);
+    res.status(500).json({ suggestions: [], fallback: true });
   }
 });
 

@@ -15,8 +15,23 @@ import {
     isCacheValid,
     isOnline,
 } from '../storage/libraryCacheStorage';
+import { getAuthToken } from '../storage/authStorage';
 import { InterestType } from '../storage/profileStorage';
 import { Story } from '../storage/storyStorage';
+
+/**
+ * Build fetch headers, injecting Authorization when a JWT token is stored.
+ * All API calls should use this so stories are associated with the parent
+ * account once a backend auth flow is wired up.
+ */
+async function buildHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 /**
  * Genre to category mapping for preloaded stories
@@ -141,7 +156,7 @@ export async function checkApiHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/health`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await buildHeaders(),
     });
     return response.ok;
   } catch (error) {
@@ -157,7 +172,7 @@ export async function generateStory(params: GenerateStoryParams): Promise<Story 
   try {
     const response = await fetch(`${API_BASE_URL}/api/stories/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await buildHeaders(),
       body: JSON.stringify(params),
     });
 
@@ -214,7 +229,7 @@ export async function getStorySuggestions(
   try {
     const response = await fetch(`${API_BASE_URL}/api/stories/suggest`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await buildHeaders(),
       body: JSON.stringify({ interests, count }),
     });
 
@@ -256,9 +271,16 @@ function getFallbackSuggestions(interests: InterestType[]): StorySuggestion[] {
 }
 
 /**
- * Library story from the backend
+ * Library story from the backend (or preloaded bundle).
+ *
+ * The backend (MySQL/Prisma) returns numeric `id` values.  For backward
+ * compatibility the server also emits `_id` as a string alias.  Both fields
+ * are included here so callers can use whichever they need.
  */
 export type LibraryStory = {
+  /** Numeric primary key — present on stories fetched from the MySQL backend. */
+  id?: number;
+  /** String alias for `id`, also used as the key for preloaded bundled stories. */
   _id: string;
   title: string;
   category: string;
@@ -353,7 +375,7 @@ export async function getLibraryStories(options?: {
     const url = `${API_BASE_URL}/api/stories/library${params.toString() ? '?' + params.toString() : ''}`;
     const response = await fetch(url, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await buildHeaders(),
     });
 
     const data = await response.json();
@@ -443,7 +465,7 @@ export async function getStoryById(storyId: string): Promise<{
     // Online - fetch from server
     const response = await fetch(`${API_BASE_URL}/api/stories/${storyId}`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await buildHeaders(),
     });
 
     const data = await response.json();
