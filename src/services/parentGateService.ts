@@ -131,20 +131,25 @@ export const resetFailedAttempts = async (): Promise<void> => {
 export const setParentPasswordHash = async (password: string): Promise<SetPasswordResult> => {
   try {
     console.log('[ParentGate] Starting password save...');
-    
+
     // Hash the password with bcrypt
     const hash = await hashPassword(password);
-    
-    // Store in SecureStore (encrypted)
-    await SecureStore.setItemAsync(SECURE_PASSWORD_HASH_KEY, hash);
-    console.log('[ParentGate] Password saved securely');
-    
-    // Clean up any legacy storage
-    await AsyncStorage.removeItem(LEGACY_PASSWORD_HASH_KEY);
-    
+
+    // Save to AsyncStorage (always works), attempt SecureStore as bonus
+    await AsyncStorage.setItem(LEGACY_PASSWORD_HASH_KEY, hash);
+    try {
+      const available = await SecureStore.isAvailableAsync();
+      if (available) {
+        await SecureStore.setItemAsync(SECURE_PASSWORD_HASH_KEY, hash);
+        console.log('[ParentGate] Password also saved to SecureStore');
+      }
+    } catch {
+      // SecureStore is optional — AsyncStorage is the primary store
+    }
+
     // Reset any failed attempts
     await resetFailedAttempts();
-    
+
     return { success: true };
   } catch (error) {
     console.error('[ParentGate] Failed to set parent password:', error);
@@ -220,10 +225,18 @@ export const verifyParentPassword = async (password: string): Promise<VerifyPass
       };
     }
     
-    // Try to retrieve password from SecureStore first
-    let stored = await SecureStore.getItemAsync(SECURE_PASSWORD_HASH_KEY);
+    // Try AsyncStorage first (primary store), then SecureStore
+    let stored: string | null = await AsyncStorage.getItem(LEGACY_PASSWORD_HASH_KEY);
     let isLegacy = false;
-    
+    if (!stored) {
+      try {
+        const available = await SecureStore.isAvailableAsync();
+        if (available) {
+          stored = await SecureStore.getItemAsync(SECURE_PASSWORD_HASH_KEY);
+        }
+      } catch { /* SecureStore unavailable */ }
+    }
+
     // Fall back to legacy AsyncStorage for migration
     if (!stored) {
       stored = await AsyncStorage.getItem(LEGACY_PASSWORD_HASH_KEY);

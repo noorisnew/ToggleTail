@@ -9,7 +9,7 @@ import {
     KNOWN_SOURCES,
     validateManifest,
     type StoryManifest,
-} from '../manifestSchema';
+} from '../data/library/manifestSchema';
 
 describe('manifestSchema', () => {
   describe('validateManifest', () => {

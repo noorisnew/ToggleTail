@@ -318,6 +318,41 @@ export async function precacheAudio(
 }
 
 /**
+ * Pre-cache multiple pages ahead for faster playback
+ * Caches pages in parallel for better performance
+ * 
+ * @param storyId - Story ID
+ * @param pages - Array of all page texts
+ * @param startIndex - Start caching from this page index
+ * @param count - Number of pages to cache ahead (default: 3)
+ * @param voiceId - Voice ID (default: 'Rachel')
+ */
+export async function precacheMultiplePages(
+  storyId: string,
+  pages: string[],
+  startIndex: number,
+  count: number = 3,
+  voiceId: string = DEFAULT_VOICE_ID
+): Promise<void> {
+  const pagesToCache: Promise<void>[] = [];
+  
+  for (let i = 0; i < count && startIndex + i < pages.length; i++) {
+    const pageIndex = startIndex + i;
+    const pageText = pages[pageIndex];
+    
+    if (pageText && isTextLengthValid(pageText)) {
+      // Fire off cache requests in parallel
+      pagesToCache.push(
+        precacheAudio(storyId, pageIndex, pageText, voiceId)
+      );
+    }
+  }
+  
+  // Wait for all to complete (or fail silently)
+  await Promise.allSettled(pagesToCache);
+}
+
+/**
  * Get current playback status
  * Returns null if no audio is loaded
  */

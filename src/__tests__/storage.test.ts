@@ -1,5 +1,22 @@
-import { STORAGE_KEYS } from '@/src/data/storage/storageKeys';
+import {
+    LIBRARY_CACHE_KEY,
+    LIBRARY_CACHE_TIMESTAMP_KEY,
+    NARRATION_MODE_KEY,
+    PARENT_RECORDINGS_KEY,
+    PROFILE_KEY,
+    STORIES_KEY,
+} from '../data/storage/storageKeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Collect keys for testing
+const STORAGE_KEYS = {
+  PROFILE: PROFILE_KEY,
+  STORIES: STORIES_KEY,
+  SETTINGS: NARRATION_MODE_KEY,
+  LIBRARY_CACHE_KEY: LIBRARY_CACHE_KEY,
+  LIBRARY_CACHE_TIMESTAMP_KEY: LIBRARY_CACHE_TIMESTAMP_KEY,
+  PARENT_RECORDINGS_KEY: PARENT_RECORDINGS_KEY,
+};
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({

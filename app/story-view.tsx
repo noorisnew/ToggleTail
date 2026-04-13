@@ -19,9 +19,11 @@ import { getStoryById } from '../src/data/api/storyApi';
 import { addEvent } from '../src/data/storage/eventLogStorage';
 import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
 import { AIVoiceId, getNarrationSettings } from '../src/data/storage/narrationStorage';
-import { getStories, Story } from '../src/data/storage/storyStorage';
+import { recordCompletedStoryReading } from '../src/data/storage/profileStorage';
+import { addScreenTime, checkScreenTimeLimit, startSession } from '../src/data/storage/settingsStorage';
+import { getStories, Story, updateStory } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
-import { precacheAudio } from '../src/services/elevenLabsPlaybackService';
+import { precacheMultiplePages } from '../src/services/elevenLabsPlaybackService';
 import { playStoryPage, stopAllPlayback } from '../src/services/storyPlaybackService';
 import {
     getSpeechRecognitionUnavailableMessage,
@@ -122,17 +124,24 @@ export default function StoryViewScreen() {
   const [pageWords, setPageWords] = useState<string[]>([]);
   const [wordsCompleted, setWordsCompleted] = useState(0);
   const [showGreatJob, setShowGreatJob] = useState(false);
+  // Index of the word that triggered the last feedback (for green/red highlight)
+  const [feedbackWordIndex, setFeedbackWordIndex] = useState(-1);
   const [naturalVoice, setNaturalVoice] = useState<Speech.Voice | null>(null);
   
   // Parent narration state
   const [narrationMode, setNarrationMode] = useState<'AI' | 'Human'>('AI');
   const [aiVoiceId, setAiVoiceId] = useState<AIVoiceId>('Rachel');
+  const [clonedVoiceId, setClonedVoiceId] = useState<string | undefined>();
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
   const [hasParentRecording, setHasParentRecording] = useState(false);
   const [isPlayingParentAudio, setIsPlayingParentAudio] = useState(false);
   
   // AI narration loading state (ElevenLabs fetch/generation)
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const readingSessionStartedAtRef = useRef<number | null>(null);
+  const screenTimeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storyCompletedRef = useRef(false);
+  const readStopLoggedRef = useRef(false);
 
   // Load best available voice and narration mode
   useEffect(() => {
@@ -152,6 +161,7 @@ export default function StoryViewScreen() {
       const settings = await getNarrationSettings();
       setNarrationMode(settings.preferredSource);
       setAiVoiceId(settings.aiVoiceId);
+      setClonedVoiceId(settings.clonedVoiceId);
     } catch (error) {
       console.log('Could not load narration settings:', error);
     }
@@ -215,43 +225,49 @@ export default function StoryViewScreen() {
   // Process what the child said
   const processRecognizedSpeech = useCallback((transcript: string) => {
     if (!transcript || pageWords.length === 0) return;
-    
+
     const spokenWords = transcript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
     const expectedWord = pageWords[currentWordIndex]?.toLowerCase().replace(/[.,!?;:'"]/g, '') || '';
-    
-    // Check each spoken word
+
+    // Check each spoken word against the expected word
     for (const spoken of spokenWords) {
       const cleanSpoken = spoken.replace(/[.,!?;:'"]/g, '');
-      
+
       if (cleanSpoken === expectedWord || isSimilarWord(cleanSpoken, expectedWord)) {
-        // Correct word!
+        // Correct — highlight the matched word green, then advance
+        const matchedIndex = currentWordIndex;
+        setFeedbackWordIndex(matchedIndex);
         setFeedback({ type: 'correct', message: getEncouragement() });
         setWordsCompleted(prev => prev + 1);
         setCurrentWordIndex(prev => {
           const nextIndex = prev + 1;
           if (nextIndex >= pageWords.length) {
-            // Completed all words on this page!
             setShowGreatJob(true);
             setTimeout(() => setShowGreatJob(false), 2000);
           }
           return nextIndex;
         });
-        
-        // Clear feedback after a moment
-        setTimeout(() => setFeedback({ type: null, message: '' }), 1500);
+
+        setTimeout(() => {
+          setFeedback({ type: null, message: '' });
+          setFeedbackWordIndex(-1);
+        }, 1500);
         return;
       }
     }
-    
-    // If no match found, help the child
+
+    // No match — highlight current word red and speak it
     if (spokenWords.length > 0) {
-      setFeedback({ 
-        type: 'incorrect', 
-        message: `Try again! The word is: "${pageWords[currentWordIndex]}"` 
+      setFeedbackWordIndex(currentWordIndex);
+      setFeedback({
+        type: 'incorrect',
+        message: `Try again! The word is: "${pageWords[currentWordIndex]}"`,
       });
-      // Read the word for them
       speakWord(pageWords[currentWordIndex]);
-      setTimeout(() => setFeedback({ type: null, message: '' }), 3000);
+      setTimeout(() => {
+        setFeedback({ type: null, message: '' });
+        setFeedbackWordIndex(-1);
+      }, 3000);
     }
   }, [currentWordIndex, pageWords]);
 
@@ -357,12 +373,15 @@ export default function StoryViewScreen() {
       setPageWords(words);
       setCurrentWordIndex(0);
       setWordsCompleted(0);
+      setFeedbackWordIndex(-1);
+      setFeedback({ type: null, message: '' });
     }
   }, [currentPage, pages]);
 
   useEffect(() => {
     loadStory();
     return () => {
+      void finalizeReadingSession();
       stopAllPlayback();
       try {
         SafeSpeechRecognitionModule.stop();
@@ -375,6 +394,94 @@ export default function StoryViewScreen() {
     };
   }, [id, source]);
 
+  const clearScreenTimeTimeout = () => {
+    if (screenTimeTimeoutRef.current) {
+      clearTimeout(screenTimeTimeoutRef.current);
+      screenTimeTimeoutRef.current = null;
+    }
+  };
+
+  const logReadStopIfNeeded = async () => {
+    if (!story?.id || !selectedMode || readStopLoggedRef.current) {
+      return;
+    }
+
+    readStopLoggedRef.current = true;
+    try {
+      await addEvent({ type: 'READ_STOP', storyId: story.id });
+    } catch (error) {
+      console.error('logReadStopIfNeeded:', normalizeError(error));
+    }
+  };
+
+  const finalizeReadingSession = async () => {
+    clearScreenTimeTimeout();
+    await logReadStopIfNeeded();
+
+    const startedAt = readingSessionStartedAtRef.current;
+    if (!startedAt) {
+      return;
+    }
+
+    readingSessionStartedAtRef.current = null;
+
+    const elapsedMinutes = Math.max(1, Math.ceil((Date.now() - startedAt) / 60000));
+    await addScreenTime(elapsedMinutes);
+  };
+
+  const completeStoryIfNeeded = async () => {
+    if (!story || storyCompletedRef.current) {
+      return;
+    }
+
+    storyCompletedRef.current = true;
+
+    await recordCompletedStoryReading();
+
+    if (source !== 'library') {
+      const updatedStory = await updateStory(story.id, {
+        readCount: (story.readCount ?? 0) + 1,
+      });
+
+      if (updatedStory) {
+        setStory(updatedStory);
+      }
+    }
+  };
+
+  const beginReadingSession = async (): Promise<boolean> => {
+    const limitStatus = await checkScreenTimeLimit();
+    if (!limitStatus.allowed) {
+      Alert.alert(
+        'Daily Reading Limit Reached',
+        'Reading time is finished for today. Ask your parent to change your limit in Parent Settings.'
+      );
+      return false;
+    }
+
+    if (!readingSessionStartedAtRef.current) {
+      readingSessionStartedAtRef.current = Date.now();
+      await startSession();
+    }
+
+    clearScreenTimeTimeout();
+
+    if (limitStatus.minutesRemaining > 0) {
+      screenTimeTimeoutRef.current = setTimeout(() => {
+        void finalizeReadingSession();
+        stopPlaybackAndClearTimeout();
+        setIsAutoPlaying(false);
+        Alert.alert(
+          'Daily Reading Limit Reached',
+          'Nice reading session. Your time is up for today.',
+          [{ text: 'OK', onPress: () => router.replace('/child-home') }]
+        );
+      }, limitStatus.minutesRemaining * 60 * 1000);
+    }
+
+    return true;
+  };
+
   // Auto-play effect for "Read to Me" mode
   useEffect(() => {
     if (selectedMode === 'read-to-me' && isAutoPlaying && pages.length > 0) {
@@ -384,6 +491,10 @@ export default function StoryViewScreen() {
 
   const loadStory = async () => {
     try {
+      // Load narration settings first so we can start pre-caching with the right voice
+      const settings = await getNarrationSettings();
+      const voiceId = settings.aiVoiceId;
+      
       if (source === 'library') {
         const result = await getStoryById(id || '');
         if (result.success && result.story) {
@@ -401,7 +512,12 @@ export default function StoryViewScreen() {
           };
           setStory(libraryStory);
           const storyPages = libraryStory.text.split('\n\n').filter(p => p.trim());
-          setPages(storyPages.length > 0 ? storyPages : [libraryStory.text]);
+          const finalPages = storyPages.length > 0 ? storyPages : [libraryStory.text];
+          setPages(finalPages);
+          
+          // Start pre-caching first 3 pages immediately (fire-and-forget)
+          precacheMultiplePages(libraryStory.id, finalPages, 0, 3, voiceId).catch(() => {});
+          
           await addEvent({ type: 'STORY_OPEN', storyId: libraryStory.id });
         }
       } else {
@@ -410,7 +526,12 @@ export default function StoryViewScreen() {
         setStory(found || null);
         if (found) {
           const storyPages = found.text.split('\n\n').filter(p => p.trim());
-          setPages(storyPages.length > 0 ? storyPages : [found.text]);
+          const finalPages = storyPages.length > 0 ? storyPages : [found.text];
+          setPages(finalPages);
+          
+          // Start pre-caching first 3 pages immediately (fire-and-forget)
+          precacheMultiplePages(found.id, finalPages, 0, 3, voiceId).catch(() => {});
+          
           await addEvent({ type: 'STORY_OPEN', storyId: found.id });
         }
       }
@@ -429,6 +550,11 @@ export default function StoryViewScreen() {
         'The "Read with Help" mode requires a native app build and is not available in Expo Go.\n\nPlease choose "Listen to Story" or "Read Myself" instead.',
         [{ text: 'OK' }]
       );
+      return;
+    }
+
+    const sessionStarted = await beginReadingSession();
+    if (!sessionStarted) {
       return;
     }
 
@@ -466,6 +592,7 @@ export default function StoryViewScreen() {
           });
         }, 2000);
       } else if (currentPage === pages.length - 1) {
+        void completeStoryIfNeeded();
         setIsAutoPlaying(false);
       }
     };
@@ -498,9 +625,9 @@ export default function StoryViewScreen() {
           setIsLoadingAudio(false);
           setIsSpeaking(true);
           
-          // Pre-cache next page in background (fire-and-forget)
+          // Pre-cache next 2 pages in background (fire-and-forget)
           if (currentPage < pages.length - 1 && story) {
-            precacheAudio(story.id, currentPage + 1, pages[currentPage + 1], aiVoiceId)
+            precacheMultiplePages(story.id, pages, currentPage + 1, 2, aiVoiceId)
               .catch(() => {}); // Ignore errors
           }
         },
@@ -520,7 +647,8 @@ export default function StoryViewScreen() {
           setIsSpeaking(false);
         },
       },
-      aiVoiceId // Pass selected AI voice
+      aiVoiceId,
+      clonedVoiceId
     );
   };
 
@@ -581,6 +709,10 @@ export default function StoryViewScreen() {
   };
 
   const handleClose = () => {
+    if (currentPage === pages.length - 1) {
+      void completeStoryIfNeeded();
+    }
+    void finalizeReadingSession();
     stopPlaybackAndClearTimeout();
     stopListening();
     setIsAutoPlaying(false);
@@ -730,27 +862,43 @@ export default function StoryViewScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* ✨ Read with Help Card - Coming Soon */}
-            <View
-              style={[styles.premiumModeCard, { backgroundColor: '#F3F4F6', opacity: 0.7 }]}
+            {/* ✨ Read with Help Card */}
+            <TouchableOpacity
+              style={[
+                styles.premiumModeCard,
+                { backgroundColor: isSpeechRecognitionAvailable() ? PREMIUM_COLORS.cardGreen : '#F3F4F6' },
+                !isSpeechRecognitionAvailable() && { opacity: 0.75 },
+              ]}
+              onPress={() => handleSelectMode('help-me-read')}
+              activeOpacity={0.85}
             >
-              <View
-                style={[styles.modeIconGradient, { backgroundColor: '#9CA3AF' }]}
+              <LinearGradient
+                colors={isSpeechRecognitionAvailable() ? ['#4ADE80', '#22C55E'] : ['#D1D5DB', '#9CA3AF']}
+                style={styles.modeIconGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
               >
                 <Text style={styles.modeIconLarge}>✨</Text>
-              </View>
+              </LinearGradient>
               <View style={styles.modeCardTextContainer}>
-                <Text style={[styles.modeCardTitlePremium, { color: '#6B7280' }]}>
+                <Text style={[
+                  styles.modeCardTitlePremium,
+                  { color: isSpeechRecognitionAvailable() ? '#15803D' : '#6B7280' },
+                ]}>
                   Read with Help
                 </Text>
                 <Text style={styles.modeCardDescPremium}>
-                  Coming Soon!
+                  {isSpeechRecognitionAvailable()
+                    ? 'Read aloud — I listen and help!'
+                    : 'Needs a native build'}
                 </Text>
               </View>
               <View style={styles.modeArrow}>
-                <Text style={[styles.arrowText, { color: '#9CA3AF' }]}>🔒</Text>
+                <Text style={styles.arrowText}>
+                  {isSpeechRecognitionAvailable() ? '→' : '🔒'}
+                </Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Fun Footer Message */}
@@ -882,8 +1030,13 @@ export default function StoryViewScreen() {
                   >
                     <Text style={[
                       styles.premiumWordText,
-                      index === currentWordIndex && styles.premiumCurrentWord,
-                      index < currentWordIndex && styles.premiumCompletedWord,
+                      // Feedback highlight takes highest priority
+                      index === feedbackWordIndex && feedback.type === 'correct' && styles.premiumCorrectWord,
+                      index === feedbackWordIndex && feedback.type === 'incorrect' && styles.premiumIncorrectWord,
+                      // Current word (no active feedback on it)
+                      index === currentWordIndex && index !== feedbackWordIndex && styles.premiumCurrentWord,
+                      // Already-read words (not currently showing feedback)
+                      index < currentWordIndex && index !== feedbackWordIndex && styles.premiumCompletedWord,
                     ]}>
                       {word}{' '}
                     </Text>
@@ -1465,7 +1618,23 @@ const styles = StyleSheet.create({
     color: '#16A34A',
     fontWeight: '600',
   },
-  
+  premiumCorrectWord: {
+    color: '#15803D',
+    backgroundColor: '#DCFCE7',
+    fontWeight: '700',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+  premiumIncorrectWord: {
+    color: '#B91C1C',
+    backgroundColor: '#FEE2E2',
+    fontWeight: '700',
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    overflow: 'hidden',
+  },
+
   // Word Progress
   premiumWordProgress: {
     width: '100%',

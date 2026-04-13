@@ -1,22 +1,66 @@
+/**
+ * Approvals Routes — /api/approvals
+ * Migrated from Mongoose to Prisma (MySQL).
+ *
+ * allowedModes is stored in the approval_modes junction table.
+ * All mode writes use a delete-then-create pattern inside a transaction.
+ */
+
 const express = require('express');
-const Approval = require('../models/Approval');
-const Child = require('../models/Child');
-const Story = require('../models/Story');
+const prisma  = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
+const DEFAULT_MODES = ['nativeTTS', 'readAlone'];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Shape a Prisma approval record into the API response format. */
+const formatApproval = (approval) => {
+  if (!approval) return null;
+  const { allowedModes, ...rest } = approval;
+  return {
+    ...rest,
+    allowedModes: allowedModes ? allowedModes.map((m) => m.mode) : [],
+  };
+};
+
 /**
- * POST /api/approvals
- * Approve or unapprove a story for a child
+ * Upsert an approval and atomically replace its allowed modes.
+ * Returns the updated approval with modes included.
  */
+const upsertApproval = async (childId, storyId, isApproved, allowedModes, approvedByParentId) => {
+  return prisma.$transaction(async (tx) => {
+    // Upsert the approval row
+    const approval = await tx.approval.upsert({
+      where:  { childId_storyId: { childId, storyId } },
+      create: { childId, storyId, isApproved, approvedByParentId },
+      update: { isApproved, approvedByParentId },
+    });
+
+    // Replace allowed modes (delete all then re-create)
+    await tx.approvalMode.deleteMany({ where: { approvalId: approval.id } });
+    await tx.approvalMode.createMany({
+      data: allowedModes.map((mode) => ({ approvalId: approval.id, mode })),
+    });
+
+    // Re-fetch with modes attached
+    return tx.approval.findUnique({
+      where:   { id: approval.id },
+      include: { allowedModes: true },
+    });
+  });
+};
+
+// ─── POST /api/approvals ──────────────────────────────────────────────────────
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { 
-      childId, 
-      storyId, 
-      isApproved = true,
-      allowedModes = ['nativeTTS', 'readAlone'],
+    const {
+      childId,
+      storyId,
+      isApproved   = true,
+      allowedModes = DEFAULT_MODES,
     } = req.body;
 
     if (!childId || !storyId) {
@@ -24,193 +68,160 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     // Verify the child belongs to this parent
-    const child = await Child.findOne({ _id: childId, parentId: req.parentId });
+    const child = await prisma.child.findFirst({
+      where: { id: parseInt(childId, 10), parentId: req.parentId },
+    });
     if (!child) {
       return res.status(404).json({ error: 'Child not found' });
     }
 
     // Verify the story exists
-    const story = await Story.findById(storyId);
+    const story = await prisma.story.findUnique({
+      where: { id: parseInt(storyId, 10) },
+    });
     if (!story) {
       return res.status(404).json({ error: 'Story not found' });
     }
 
-    // Upsert the approval
-    const approval = await Approval.findOneAndUpdate(
-      { childId, storyId },
-      {
-        isApproved,
-        allowedModes,
-        approvedByParentId: req.parentId,
-        updatedAt: new Date(),
-      },
-      { upsert: true, new: true }
+    const approval = await upsertApproval(
+      child.id, story.id, isApproved, allowedModes, req.parentId,
     );
 
-    res.json({
-      success: true,
-      approval,
-    });
+    res.json({ success: true, approval: formatApproval(approval) });
   } catch (error) {
     console.error('Create approval error:', error.message);
     res.status(500).json({ error: 'Could not update approval' });
   }
 });
 
-/**
- * GET /api/approvals
- * Get approvals for a child or all children of the parent
- */
+// ─── GET /api/approvals ───────────────────────────────────────────────────────
 router.get('/', requireAuth, async (req, res) => {
   try {
     const { childId, isApproved } = req.query;
 
-    // Build query
-    let query = {};
+    let childIdFilter;
 
     if (childId) {
-      // Verify child belongs to parent
-      const child = await Child.findOne({ _id: childId, parentId: req.parentId });
-      if (!child) {
-        return res.status(404).json({ error: 'Child not found' });
-      }
-      query.childId = childId;
+      const child = await prisma.child.findFirst({
+        where: { id: parseInt(childId, 10), parentId: req.parentId },
+      });
+      if (!child) return res.status(404).json({ error: 'Child not found' });
+      childIdFilter = child.id;
     } else {
-      // Get all children for this parent
-      const children = await Child.find({ parentId: req.parentId }).select('_id');
-      query.childId = { $in: children.map(c => c._id) };
+      // All children belonging to this parent
+      const children = await prisma.child.findMany({
+        where:  { parentId: req.parentId },
+        select: { id: true },
+      });
+      childIdFilter = { in: children.map((c) => c.id) };
     }
 
-    if (isApproved !== undefined) {
-      query.isApproved = isApproved === 'true';
-    }
+    const where = { childId: childIdFilter };
+    if (isApproved !== undefined) where.isApproved = isApproved === 'true';
 
-    const approvals = await Approval.find(query)
-      .populate('storyId', 'title category coverUrl readingLevel')
-      .sort({ updatedAt: -1 });
-
-    res.json({
-      success: true,
-      approvals,
+    const approvals = await prisma.approval.findMany({
+      where,
+      include: {
+        allowedModes: true,
+        story: { select: { id: true, title: true, category: true, coverUrl: true, readingLevel: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
     });
+
+    res.json({ success: true, approvals: approvals.map(formatApproval) });
   } catch (error) {
     console.error('Get approvals error:', error.message);
     res.status(500).json({ error: 'Could not fetch approvals' });
   }
 });
 
-/**
- * GET /api/approvals/child/:childId
- * Get approved stories for a specific child (for child's view)
- */
+// ─── GET /api/approvals/child/:childId ────────────────────────────────────────
 router.get('/child/:childId', requireAuth, async (req, res) => {
   try {
-    const { childId } = req.params;
+    const child = await prisma.child.findFirst({
+      where: { id: parseInt(req.params.childId, 10), parentId: req.parentId },
+    });
+    if (!child) return res.status(404).json({ error: 'Child not found' });
 
-    // Verify child belongs to parent
-    const child = await Child.findOne({ _id: childId, parentId: req.parentId });
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
-    }
+    const approvals = await prisma.approval.findMany({
+      where:   { childId: child.id, isApproved: true },
+      include: { allowedModes: true, story: true },
+      orderBy: { updatedAt: 'desc' },
+    });
 
-    const approvals = await Approval.find({ 
-      childId, 
-      isApproved: true,
-    })
-      .populate('storyId')
-      .sort({ updatedAt: -1 });
-
-    // Extract stories with approval info
+    // Return stories with their approval metadata embedded
     const stories = approvals
-      .filter(a => a.storyId) // Filter out any with deleted stories
-      .map(a => ({
-        ...a.storyId.toObject(),
-        approvalId: a._id,
-        allowedModes: a.allowedModes,
-        isFavorite: a.isFavorite,
+      .filter((a) => a.story)
+      .map((a) => ({
+        ...a.story,
+        approvalId:   a.id,
+        allowedModes: a.allowedModes.map((m) => m.mode),
+        isFavorite:   a.isFavorite,
       }));
 
-    res.json({
-      success: true,
-      stories,
-    });
+    res.json({ success: true, stories });
   } catch (error) {
     console.error('Get child approvals error:', error.message);
     res.status(500).json({ error: 'Could not fetch approved stories' });
   }
 });
 
-/**
- * PATCH /api/approvals/:id/favorite
- * Toggle favorite status for an approval
- */
+// ─── PATCH /api/approvals/:id/favorite ───────────────────────────────────────
 router.patch('/:id/favorite', requireAuth, async (req, res) => {
   try {
-    const { isFavorite } = req.body;
-
-    const approval = await Approval.findById(req.params.id);
-    if (!approval) {
-      return res.status(404).json({ error: 'Approval not found' });
-    }
-
-    // Verify parent owns this child
-    const child = await Child.findOne({ 
-      _id: approval.childId, 
-      parentId: req.parentId,
+    const approval = await prisma.approval.findUnique({
+      where:   { id: parseInt(req.params.id, 10) },
+      include: { allowedModes: true },
     });
-    if (!child) {
-      return res.status(403).json({ error: 'Not authorized' });
-    }
+    if (!approval) return res.status(404).json({ error: 'Approval not found' });
 
-    approval.isFavorite = isFavorite !== undefined ? isFavorite : !approval.isFavorite;
-    await approval.save();
-
-    res.json({
-      success: true,
-      approval,
+    // Confirm the child belongs to this parent
+    const child = await prisma.child.findFirst({
+      where: { id: approval.childId, parentId: req.parentId },
     });
+    if (!child) return res.status(403).json({ error: 'Not authorized' });
+
+    const isFavorite = req.body.isFavorite !== undefined
+      ? req.body.isFavorite
+      : !approval.isFavorite;
+
+    const updated = await prisma.approval.update({
+      where:   { id: approval.id },
+      data:    { isFavorite },
+      include: { allowedModes: true },
+    });
+
+    res.json({ success: true, approval: formatApproval(updated) });
   } catch (error) {
     console.error('Toggle favorite error:', error.message);
     res.status(500).json({ error: 'Could not update favorite status' });
   }
 });
 
-/**
- * DELETE /api/approvals/:id
- * Delete an approval (removes story access for child)
- */
+// ─── DELETE /api/approvals/:id ────────────────────────────────────────────────
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    const approval = await Approval.findById(req.params.id);
-    if (!approval) {
-      return res.status(404).json({ error: 'Approval not found' });
-    }
-
-    // Verify parent owns this child
-    const child = await Child.findOne({ 
-      _id: approval.childId, 
-      parentId: req.parentId,
+    const approval = await prisma.approval.findUnique({
+      where: { id: parseInt(req.params.id, 10) },
     });
-    if (!child) {
-      return res.status(403).json({ error: 'Not authorized' });
-    }
+    if (!approval) return res.status(404).json({ error: 'Approval not found' });
 
-    await approval.deleteOne();
-
-    res.json({
-      success: true,
-      message: 'Approval deleted',
+    const child = await prisma.child.findFirst({
+      where: { id: approval.childId, parentId: req.parentId },
     });
+    if (!child) return res.status(403).json({ error: 'Not authorized' });
+
+    // Cascade deletes approval_modes automatically (FK ON DELETE CASCADE)
+    await prisma.approval.delete({ where: { id: approval.id } });
+
+    res.json({ success: true, message: 'Approval deleted' });
   } catch (error) {
     console.error('Delete approval error:', error.message);
     res.status(500).json({ error: 'Could not delete approval' });
   }
 });
 
-/**
- * POST /api/approvals/bulk
- * Approve multiple stories for a child at once
- */
+// ─── POST /api/approvals/bulk ─────────────────────────────────────────────────
 router.post('/bulk', requireAuth, async (req, res) => {
   try {
     const { childId, storyIds, isApproved = true, allowedModes } = req.body;
@@ -219,36 +230,27 @@ router.post('/bulk', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'childId and storyIds array are required' });
     }
 
-    // Verify child belongs to parent
-    const child = await Child.findOne({ _id: childId, parentId: req.parentId });
-    if (!child) {
-      return res.status(404).json({ error: 'Child not found' });
-    }
+    const child = await prisma.child.findFirst({
+      where: { id: parseInt(childId, 10), parentId: req.parentId },
+    });
+    if (!child) return res.status(404).json({ error: 'Child not found' });
+
+    const modes = allowedModes || DEFAULT_MODES;
 
     const results = await Promise.all(
       storyIds.map(async (storyId) => {
         try {
-          const approval = await Approval.findOneAndUpdate(
-            { childId, storyId },
-            {
-              isApproved,
-              allowedModes: allowedModes || ['nativeTTS', 'readAlone'],
-              approvedByParentId: req.parentId,
-              updatedAt: new Date(),
-            },
-            { upsert: true, new: true }
+          const approval = await upsertApproval(
+            child.id, parseInt(storyId, 10), isApproved, modes, req.parentId,
           );
-          return { storyId, success: true, approval };
+          return { storyId, success: true, approval: formatApproval(approval) };
         } catch (e) {
           return { storyId, success: false, error: e.message };
         }
-      })
+      }),
     );
 
-    res.json({
-      success: true,
-      results,
-    });
+    res.json({ success: true, results });
   } catch (error) {
     console.error('Bulk approval error:', error.message);
     res.status(500).json({ error: 'Could not process bulk approval' });

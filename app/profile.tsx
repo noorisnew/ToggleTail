@@ -13,7 +13,6 @@ import {
 import { BorderRadius, Colors, Spacing, Typography } from '../constants/design';
 import { signOut } from '../src/data/storage/authStorage';
 import { AvatarType, ChildProfile, getProfile, updateProfile } from '../src/data/storage/profileStorage';
-import { getStories, Story } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
 
 // Avatar emoji mapping
@@ -49,14 +48,11 @@ export default function ProfileScreen() {
 
   const loadData = async () => {
     try {
-      const [profileData, storiesData] = await Promise.all([
-        getProfile(),
-        getStories(),
-      ]);
+      const profileData = await getProfile();
       
       setProfile(profileData);
-      setStoriesCount(storiesData.filter((s: Story) => s.approved).length);
-      setFavoritesCount(storiesData.filter((s: Story) => s.isFavorite).length);
+      setStoriesCount(profileData?.totalStoriesRead ?? 0);
+      setFavoritesCount(profileData?.favoriteStories?.length ?? 0);
     } catch (error) {
       console.error('loadData:', normalizeError(error));
     }
@@ -456,7 +452,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   signOutHint: {
-    fontSize: Typography.sizes.caption,
+    fontSize: Typography.sizes.small,
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: Spacing.sm,

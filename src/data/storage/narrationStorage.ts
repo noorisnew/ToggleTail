@@ -10,7 +10,7 @@ import { NARRATION_MODE_KEY } from './storageKeys';
 export type NarrationMode = 'AI' | 'Human';
 
 /** Available AI voice options (ElevenLabs voice IDs) */
-export type AIVoiceId = 'Rachel' | 'Adam' | 'Sarah';
+export type AIVoiceId = 'Rachel' | 'Adam' | 'Sarah' | 'Dorothy' | 'Josh';
 
 /** Labels for parent-recorded voices */
 export type ParentVoiceLabel = 'Mom' | 'Dad' | 'Parent';
@@ -23,6 +23,8 @@ export type NarrationSettings = {
   aiVoiceId: AIVoiceId;
   /** Label for parent recordings (informational display) */
   parentVoiceLabel: ParentVoiceLabel;
+  /** ElevenLabs voice ID created by cloning the parent's recorded voice */
+  clonedVoiceId?: string;
 };
 
 /** AI voice display metadata */
@@ -39,8 +41,10 @@ export type AIVoiceOption = {
 
 /** Available AI voice options for UI selection */
 export const AI_VOICE_OPTIONS: AIVoiceOption[] = [
-  { id: 'Rachel', name: 'Rachel', emoji: '👩', description: 'Warm & friendly' },
-  { id: 'Adam', name: 'Adam', emoji: '👨', description: 'Clear & calm' },
+  { id: 'Rachel', name: 'Rachel', emoji: '👩', description: 'Warm storyteller' },
+  { id: 'Dorothy', name: 'Dorothy', emoji: '👵', description: 'Gentle grandma' },
+  { id: 'Josh', name: 'Josh', emoji: '👦', description: 'Fun & playful' },
+  { id: 'Adam', name: 'Adam', emoji: '👨', description: 'Calm narrator' },
   { id: 'Sarah', name: 'Sarah', emoji: '👧', description: 'Bright & cheerful' },
 ];
 
@@ -80,6 +84,7 @@ export async function getNarrationSettings(): Promise<NarrationSettings> {
       preferredSource: parsed.preferredSource ?? DEFAULT_SETTINGS.preferredSource,
       aiVoiceId: parsed.aiVoiceId ?? DEFAULT_SETTINGS.aiVoiceId,
       parentVoiceLabel: parsed.parentVoiceLabel ?? DEFAULT_SETTINGS.parentVoiceLabel,
+      clonedVoiceId: parsed.clonedVoiceId,
     };
   } catch (error) {
     console.error('getNarrationSettings:', normalizeError(error));

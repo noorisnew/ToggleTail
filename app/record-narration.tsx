@@ -1,3 +1,4 @@
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -10,10 +11,12 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
+import { cloneVoice } from '../src/data/api/elevenLabsApi';
 import { getStoryById } from '../src/data/api/storyApi';
 import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
+import { getNarrationSettings, saveNarrationSettings } from '../src/data/storage/narrationStorage';
 import { getStories } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
 import {
@@ -45,12 +48,17 @@ export default function RecordNarrationScreen() {
   const [tempRecording, setTempRecording] = useState<{ uri: string; durationMs: number } | null>(null);
   const [existingRecording, setExistingRecording] = useState<{ uri: string; durationMs: number } | null>(null);
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
+  const [isExpoGo, setIsExpoGo] = useState(false);
   
   // Animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const recordingTimer = useRef<NodeJS.Timer | null>(null);
+  const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // Detect if running in Expo Go (recording won't work there)
+    const isRunningInExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+    setIsExpoGo(isRunningInExpoGo);
+    
     loadStory();
     return () => {
       stopPlayback();
@@ -137,6 +145,16 @@ export default function RecordNarrationScreen() {
   };
 
   const handleStartRecording = async () => {
+    // Show warning if running in Expo Go
+    if (isExpoGo) {
+      Alert.alert(
+        'Native Build Required',
+        'Recording doesn\'t work in Expo Go. Please build the app using:\n\nnpm run prebuild\nnpm run run:android (or run:ios)',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const hasPermission = await requestRecordingPermissions();
     if (!hasPermission) {
       Alert.alert('Permission Required', 'Please allow microphone access to record narration.');
@@ -146,15 +164,26 @@ export default function RecordNarrationScreen() {
     setTempRecording(null);
     setRecordingDuration(0);
     
-    const success = await startRecording();
-    if (success) {
+    const result = await startRecording();
+    if (result.success) {
       setIsRecording(true);
       // Start duration timer
       recordingTimer.current = setInterval(() => {
         setRecordingDuration(d => d + 1000);
       }, 1000);
     } else {
-      Alert.alert('Error', 'Could not start recording. Please try again.');
+      // Show detailed error message based on error type
+      if (result.error === 'expo_go_unsupported') {
+        Alert.alert(
+          'Native Build Required',
+          result.message,
+          [{ text: 'OK' }]
+        );
+      } else if (result.error === 'permission_denied') {
+        Alert.alert('Permission Required', 'Please allow microphone access to record narration.');
+      } else {
+        Alert.alert('Recording Failed', `Could not start recording: ${result.message}`);
+      }
     }
   };
 
@@ -210,11 +239,21 @@ export default function RecordNarrationScreen() {
     if (saved) {
       setExistingRecording({ uri: saved.fileUri, durationMs: saved.durationMs });
       setTempRecording(null);
-      
+
       // Refresh story recordings
       const recordings = await getStoryRecordings(story.id);
       setStoryRecordings(recordings);
-      
+
+      // Clone voice in background — fire and forget
+      // Only clones once; if a cloned voice already exists the ID is overwritten
+      // with the latest recording for a fresher sample.
+      cloneVoice(saved.fileUri).then(async (result) => {
+        if (result.success) {
+          const settings = await getNarrationSettings();
+          await saveNarrationSettings({ ...settings, clonedVoiceId: result.voiceId });
+        }
+      }).catch(() => {});
+
       Alert.alert('Saved!', 'Recording saved successfully.');
     } else {
       Alert.alert('Error', 'Could not save recording.');
@@ -292,6 +331,17 @@ export default function RecordNarrationScreen() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#F3E8FF" />
       <View style={styles.container}>
+        {/* Expo Go Warning Banner */}
+        {isExpoGo && (
+          <View style={styles.expoGoBanner}>
+            <Text style={styles.expoGoBannerEmoji}>⚠️</Text>
+            <View style={styles.expoGoBannerTextContainer}>
+              <Text style={styles.expoGoBannerTitle}>Running in Expo Go</Text>
+              <Text style={styles.expoGoBannerText}>Recording requires a native build. Run "npm run prebuild" then "npm run run:android" (or run:ios).</Text>
+            </View>
+          </View>
+        )}
+
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
@@ -726,5 +776,33 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  expoGoBanner: {
+    flexDirection: 'row',
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  expoGoBannerEmoji: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  expoGoBannerTextContainer: {
+    flex: 1,
+  },
+  expoGoBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  expoGoBannerText: {
+    fontSize: 12,
+    color: '#92400E',
+    lineHeight: 16,
   },
 });

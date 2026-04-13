@@ -198,6 +198,63 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Voice Cloning
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CloneVoiceResult =
+  | { success: true; voiceId: string; previewUrl: string | null }
+  | { success: false; error: string };
+
+/**
+ * Clone a voice from a local audio recording.
+ *
+ * Sends the parent's recorded audio to the backend, which calls the
+ * ElevenLabs voice cloning API. Returns the new voice ID that can be
+ * used for TTS generation.
+ *
+ * @param audioUri - Local file URI of the recording (e.g. from expo-file-system)
+ * @param name - Label for the cloned voice (default: 'Parent Voice')
+ */
+export async function cloneVoice(
+  audioUri: string,
+  name: string = 'Parent Voice'
+): Promise<CloneVoiceResult> {
+  try {
+    const formData = new FormData();
+    formData.append('name', name);
+    // React Native accepts { uri, name, type } as a form file part
+    formData.append('audio', {
+      uri: audioUri,
+      name: 'recording.m4a',
+      type: 'audio/m4a',
+    } as any);
+
+    const response = await fetch(`${TTS_ENDPOINT}/clone-voice`, {
+      method: 'POST',
+      body: formData,
+      // Do NOT set Content-Type — fetch adds it with the correct boundary
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: (data as any).error ?? `Server error: ${response.status}`,
+      };
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      voiceId: data.voiceId,
+      previewUrl: data.previewUrl ?? null,
+    };
+  } catch (error) {
+    return { success: false, error: normalizeError(error) };
+  }
+}
+
 /**
  * Validate text length for TTS (ElevenLabs has limits)
  *

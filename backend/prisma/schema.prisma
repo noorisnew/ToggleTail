@@ -1,0 +1,314 @@
+// ToggleTail — Prisma Schema (MySQL)
+// Run `npx prisma migrate dev --name init` to generate and apply the migration.
+// Run `npx prisma generate` after any schema change to regenerate the client.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTHENTICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Parent account — one parent can have many children.
+model Parent {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique @db.VarChar(255)
+  // BCrypt-hashed password (never sent to client)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  // Optional quick-access PIN, also BCrypt-hashed
+  pinHash      String?  @map("pin_hash") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  children       Child[]
+  givenApprovals Approval[]
+  createdStories Story[]    @relation("CreatedByParent")
+
+  @@map("parents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHILD PROFILES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Child profile linked to a parent.
+model Child {
+  id    Int    @id @default(autoincrement())
+  parentId     Int    @map("parent_id")
+  name  String @db.VarChar(50)
+  age   Int    @db.TinyInt // 2-12
+
+  // Derived from age (computed before insert/update)
+  ageBand      String @default("6-8") @map("age_band") @db.VarChar(5)
+  readingLevel String @default("Beginner") @map("reading_level") @db.VarChar(20)
+  avatar       String @default("Dino") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  parent           Parent            @relation(fields: [parentId], references: [id])
+  interests        ChildInterest[]
+  approvals        Approval[]
+  playbackSessions PlaybackSession[]
+  storiesFor       Story[]           @relation("CreatedForChild")
+
+  @@index([parentId])
+  @@map("children")
+}
+
+/// Normalised interests array for Child (one row per interest).
+model ChildInterest {
+  id       Int    @id @default(autoincrement())
+  childId  Int    @map("child_id")
+  interest String @db.VarChar(50)
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@map("child_interests")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STORIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Story content from the library, parent-created, or AI-generated.
+model Story {
+  id    Int    @id @default(autoincrement())
+  title String @db.VarChar(200)
+  // Full story text
+  text  String @db.LongText
+
+  // Categorisation
+  category     String @default("General") @db.VarChar(50)
+  ageBand      String @default("all") @map("age_band") @db.VarChar(5)
+  readingLevel String @default("Beginner") @map("reading_level") @db.VarChar(20)
+  language     String @default("en") @db.VarChar(10)
+
+  // Source tracking
+  sourceType      String  @map("source_type") @db.VarChar(20)  // library | parentCreated | aiGenerated
+  provider        String  @default("internal") @db.VarChar(20) // internal | storyweaver | openai | …
+  providerStoryId String? @map("provider_story_id") @db.VarChar(255)
+  externalId      String? @map("external_id") @db.VarChar(255)
+
+  // Attribution
+  license     String  @default("CC-BY-4.0") @db.VarChar(50)
+  author      String? @db.VarChar(255)
+  illustrator String? @db.VarChar(255)
+  attribution String? @db.Text
+  sourceUrl   String? @map("source_url") @db.Text
+
+  // Creator links (NULL for library stories)
+  createdByParentId Int? @map("created_by_parent_id")
+  createdForChildId Int? @map("created_for_child_id")
+
+  coverUrl  String? @map("cover_url") @db.Text
+  wordCount Int     @default(0) @map("word_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdByParent  Parent?           @relation("CreatedByParent", fields: [createdByParentId], references: [id])
+  createdForChild  Child?            @relation("CreatedForChild", fields: [createdForChildId], references: [id])
+  pages            StoryPage[]
+  approvals        Approval[]
+  narrations       Narration[]
+  playbackSessions PlaybackSession[]
+
+  @@index([sourceType, ageBand, readingLevel])
+  @@index([createdByParentId])
+  @@index([category])
+  @@index([updatedAt])
+  @@map("stories")
+}
+
+/// Normalised pages array for Story (one row per page/paragraph).
+model StoryPage {
+  id        Int    @id @default(autoincrement())
+  storyId   Int    @map("story_id")
+  pageIndex Int    @map("page_index")
+  content   String @db.Text
+
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId])
+  @@map("story_pages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPROVALS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Records which stories a parent has approved for a specific child.
+model Approval {
+  id                 Int      @id @default(autoincrement())
+  childId            Int      @map("child_id")
+  storyId            Int      @map("story_id")
+  isApproved         Boolean  @default(false) @map("is_approved")
+  approvedByParentId Int      @map("approved_by_parent_id")
+  isFavorite         Boolean  @default(false) @map("is_favorite")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  child            Child          @relation(fields: [childId], references: [id])
+  story            Story          @relation(fields: [storyId], references: [id])
+  approvedByParent Parent         @relation(fields: [approvedByParentId], references: [id])
+  allowedModes     ApprovalMode[]
+
+  // One approval record per child+story combination
+  @@unique([childId, storyId])
+  @@index([childId, isApproved])
+  @@index([updatedAt])
+  @@map("approvals")
+}
+
+/// Allowed narration modes per approval (normalised from an array).
+model ApprovalMode {
+  id         Int    @id @default(autoincrement())
+  approvalId Int    @map("approval_id")
+  // nativeTTS | aiTTS | elevenlabs | readAlone
+  mode       String @db.VarChar(20)
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+
+  @@map("approval_modes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NARRATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Metadata for generated audio narrations (audio files stored elsewhere).
+model Narration {
+  id        Int  @id @default(autoincrement())
+  storyId   Int  @map("story_id")
+  pageIndex Int? @map("page_index") // NULL means full-story narration
+
+  mode      String  @db.VarChar(20)  // nativeTTS | aiTTS | elevenlabs
+  voiceId   String  @map("voice_id") @db.VarChar(255)
+  voiceName String? @map("voice_name") @db.VarChar(255)
+
+  audioUrl      String? @map("audio_url") @db.Text
+  audioKey      String? @map("audio_key") @db.VarChar(255)
+  durationSec   Float   @default(0) @map("duration_sec")
+  checksum      String? @db.VarChar(255)
+  fileSizeBytes Int     @default(0) @map("file_size_bytes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  story Story @relation(fields: [storyId], references: [id])
+
+  @@index([storyId, mode, voiceId])
+  @@index([storyId, pageIndex])
+  @@map("narrations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLAYBACK SESSIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tracks reading/listening progress per child per story.
+model PlaybackSession {
+  id      Int @id @default(autoincrement())
+  childId Int @map("child_id")
+  storyId Int @map("story_id")
+
+  lastPageIndex      Int   @default(0) @map("last_page_index")
+  totalPages         Int   @default(1) @map("total_pages")
+  lastPositionSec    Float @default(0) @map("last_position_sec")
+  totalListenTimeSec Float @default(0) @map("total_listen_time_sec")
+  totalReadTimeSec   Float @default(0) @map("total_read_time_sec")
+  sessionCount       Int   @default(1) @map("session_count")
+
+  isCompleted Boolean   @default(false) @map("is_completed")
+  completedAt DateTime? @map("completed_at")
+
+  // readToMe | helpMeRead | readAlone
+  lastMode  String   @default("readAlone") @map("last_mode") @db.VarChar(20)
+  startedAt DateTime @default(now()) @map("started_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  child Child @relation(fields: [childId], references: [id])
+  story Story @relation(fields: [storyId], references: [id])
+
+  // One session record per child+story pair
+  @@unique([childId, storyId])
+  @@index([childId, updatedAt])
+  @@map("playback_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANALYTICS (anonymous, no PII)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Aggregate daily event counts — no user identifiers stored here.
+model DailyStat {
+  id   Int    @id @default(autoincrement())
+  date String @unique @db.VarChar(10) // YYYY-MM-DD
+
+  storiesGenerated Int @default(0) @map("stories_generated")
+  storiesOpened    Int @default(0) @map("stories_opened")
+  ttsRequests      Int @default(0) @map("tts_requests")
+  appSessions      Int @default(0) @map("app_sessions")
+
+  // Platform breakdown
+  platformWeb     Int @default(0) @map("platform_web")
+  platformIos     Int @default(0) @map("platform_ios")
+  platformAndroid Int @default(0) @map("platform_android")
+
+  // Reading level distribution
+  readingLevelBeginner     Int @default(0) @map("reading_level_beginner")
+  readingLevelIntermediate Int @default(0) @map("reading_level_intermediate")
+  readingLevelAdvanced     Int @default(0) @map("reading_level_advanced")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("daily_stats")
+}
+
+/// Feature flags for remote feature gating.
+model FeatureFlag {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  enabled     Boolean  @default(false)
+  description String?  @db.Text
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
+}
+
+/// Cached TTS voice lists to reduce external API calls.
+model VoiceCache {
+  id        Int      @id @default(autoincrement())
+  provider  String   @db.VarChar(20) // elevenlabs | system
+  cachedAt  DateTime @default(now()) @map("cached_at")
+  expiresAt DateTime @map("expires_at")
+
+  entries VoiceCacheEntry[]
+
+  @@map("voice_cache")
+}
+
+/// Individual voice entry within a VoiceCache record.
+model VoiceCacheEntry {
+  id           Int     @id @default(autoincrement())
+  voiceCacheId Int     @map("voice_cache_id")
+  voiceId      String  @map("voice_id") @db.VarChar(255)
+  name         String  @db.VarChar(255)
+  language     String? @db.VarChar(50)
+  gender       String? @db.VarChar(20)
+
+  voiceCache VoiceCache @relation(fields: [voiceCacheId], references: [id], onDelete: Cascade)
+
+  @@map("voice_cache_entries")
+}

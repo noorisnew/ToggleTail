@@ -15,7 +15,8 @@
  */
 
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
     deletePageRecording,
     getPageRecording,
@@ -24,29 +25,9 @@ import {
 } from '../data/storage/narrationRecordingStorage';
 import { normalizeError } from '../domain/services/errorService';
 
-// Recording quality settings
-const RECORDING_OPTIONS = {
-  android: {
-    extension: '.m4a',
-    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-    audioEncoder: Audio.AndroidAudioEncoder.AAC,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-  },
-  ios: {
-    extension: '.m4a',
-    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-    audioQuality: Audio.IOSAudioQuality.HIGH,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-  },
-  web: {
-    mimeType: 'audio/webm',
-    bitsPerSecond: 128000,
-  },
-};
+// Use expo-av's recommended HIGH_QUALITY preset for reliable cross-platform recording
+// This handles platform-specific settings automatically and is more robust than custom options
+const RECORDING_OPTIONS = Audio.RecordingOptionsPresets.HIGH_QUALITY;
 
 let currentRecording: Audio.Recording | null = null;
 let currentSound: Audio.Sound | null = null;
@@ -90,34 +71,51 @@ async function configureAudioForPlayback(): Promise<void> {
   });
 }
 
+/** Result type for startRecording with detailed error info */
+export type StartRecordingResult = 
+  | { success: true }
+  | { success: false; error: 'permission_denied' | 'expo_go_unsupported' | 'unknown'; message: string };
+
 /**
  * Start recording audio
+ * Returns detailed error info to help diagnose issues (especially in Expo Go)
  */
-export async function startRecording(): Promise<boolean> {
+export async function startRecording(): Promise<StartRecordingResult> {
+  // Proactively block in Expo Go — Audio.Recording is not available there.
+  // Checking before attempting avoids cryptic native-module crash messages.
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+    return {
+      success: false,
+      error: 'expo_go_unsupported',
+      message: 'Recording requires a native build. Run "npm run prebuild && npm run run:android" (or run:ios).',
+    };
+  }
+
   try {
     // Stop any existing recording
     if (currentRecording) {
       await stopRecording();
     }
-    
+
     // Request permissions if needed
     const hasPermission = await requestRecordingPermissions();
     if (!hasPermission) {
       console.error('Recording permission denied');
-      return false;
+      return { success: false, error: 'permission_denied', message: 'Microphone permission was denied' };
     }
-    
+
     // Configure audio mode
     await configureAudioForRecording();
-    
+
     // Start recording
     const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
     currentRecording = recording;
-    
-    return true;
+
+    return { success: true };
   } catch (error) {
-    console.error('startRecording error:', normalizeError(error));
-    return false;
+    const errorMessage = normalizeError(error);
+    console.error('startRecording error:', errorMessage);
+    return { success: false, error: 'unknown', message: errorMessage };
   }
 }
 

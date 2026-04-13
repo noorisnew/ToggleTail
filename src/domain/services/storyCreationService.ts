@@ -14,6 +14,7 @@
 // ============================================================================
 
 export type StoryLength = 'Short' | 'Medium' | 'Long';
+export type ReadingLevel = 'Beginner' | 'Intermediate' | 'Advanced';
 
 export interface LocalStoryParams {
   title: string;
@@ -23,6 +24,7 @@ export interface LocalStoryParams {
   specialCharacters?: string;
   storyContext?: string;
   length: StoryLength;
+  readingLevel?: ReadingLevel;
 }
 
 // ============================================================================
@@ -85,9 +87,8 @@ function pickRandom<T>(arr: T[]): T {
  * @returns Generated story text
  */
 export function generateLocalStory(params: LocalStoryParams): string {
-  const { childName, theme, mainCharacter, length } = params;
+  const { childName, theme, mainCharacter, length, readingLevel = 'Intermediate' } = params;
 
-  // Trim and treat whitespace-only as empty
   const trimmedMainChar = mainCharacter?.trim();
   const trimmedChildName = childName?.trim();
   const heroName = trimmedMainChar || trimmedChildName || 'A curious adventurer';
@@ -96,6 +97,36 @@ export function generateLocalStory(params: LocalStoryParams): string {
   const solution = pickRandom(STORY_TEMPLATES.solutions);
   const moral = pickRandom(STORY_TEMPLATES.morals);
 
+  // Beginner: very short sentences, simple words, minimal pages
+  if (readingLevel === 'Beginner') {
+    const beginnerShort = `${intro} there lived ${heroName}.
+
+One day, ${heroName} ${adventure}.
+
+${heroName} tried hard. ${heroName} did not give up.
+
+${moral}
+
+The End.`;
+
+    if (length === 'Short') return beginnerShort;
+
+    return `${intro} there lived ${heroName}.
+
+One day, ${heroName} ${adventure}. It was exciting!
+
+${heroName} looked around. There was so much to see.
+
+A new friend came along. They helped each other.
+
+${solution} they did it together!
+
+${moral}
+
+The End.`;
+  }
+
+  // Intermediate / Advanced — original template with length scaling
   const shortStory = `${intro} there lived ${heroName}.
 
 One sunny day, ${heroName} ${adventure}. It was the beginning of an amazing adventure!
@@ -108,7 +139,6 @@ The End.`;
 
   if (length === 'Short') return shortStory;
 
-  // Medium/Long stories get more content
   const middlePart = `
 
 Along the way, ${heroName} made new friends who joined the journey. Together, they overcame obstacles and shared many laughs. The path wasn't always easy, but ${heroName} never gave up.
@@ -117,7 +147,7 @@ Along the way, ${heroName} made new friends who joined the journey. Together, th
 
   const longPart = length === 'Long' ? `
 
-The adventure took them through winding paths and sparkling meadows. They discovered that the real treasure wasn't what they expected - it was the friendship and memories they made along the way.
+The adventure took them through winding paths and sparkling meadows. They discovered that the real treasure wasn't what they expected — it was the friendship and memories they made along the way.
 
 ${heroName} looked back at the journey and felt proud. Not just for completing the quest, but for all the kindness shared and lessons learned.` : '';
 

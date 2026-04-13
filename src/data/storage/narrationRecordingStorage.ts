@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { normalizeError } from '../../domain/services/errorService';
 import { PARENT_RECORDINGS_KEY } from './storageKeys';
 

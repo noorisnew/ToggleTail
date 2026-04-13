@@ -20,6 +20,28 @@ export type ChildProfile = {
   favoriteStories?: string[];
 };
 
+function getTodayKey(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function getYesterdayKey(): string {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toISOString().split('T')[0];
+}
+
+function getUpdatedReadingStreak(current: ChildProfile, today: string): number {
+  if (current.lastReadDate === today) {
+    return current.readingStreak ?? 1;
+  }
+
+  if (current.lastReadDate === getYesterdayKey()) {
+    return Math.max(current.readingStreak ?? 1, 1) + 1;
+  }
+
+  return 1;
+}
+
 /**
  * Get the child profile from storage
  * Returns null if no profile exists
@@ -82,6 +104,33 @@ export async function updateProfile(updates: Partial<ChildProfile>): Promise<Chi
     return updated;
   } catch (error) {
     console.error('updateProfile:', normalizeError(error));
+    return null;
+  }
+}
+
+/**
+ * Record a fully completed story read for profile statistics.
+ * Updates total stories read, last read date, and reading streak.
+ */
+export async function recordCompletedStoryReading(): Promise<ChildProfile | null> {
+  try {
+    const current = await getProfile();
+    if (!current) {
+      return null;
+    }
+
+    const today = getTodayKey();
+    const updated: ChildProfile = {
+      ...current,
+      totalStoriesRead: (current.totalStoriesRead ?? 0) + 1,
+      readingStreak: getUpdatedReadingStreak(current, today),
+      lastReadDate: today,
+    };
+
+    await setProfile(updated);
+    return updated;
+  } catch (error) {
+    console.error('recordCompletedStoryReading:', normalizeError(error));
     return null;
   }
 }

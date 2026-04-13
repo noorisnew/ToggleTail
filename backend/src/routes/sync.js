@@ -1,68 +1,55 @@
-const express = require('express');
-const Child = require('../models/Child');
-const Story = require('../models/Story');
-const Approval = require('../models/Approval');
-const PlaybackSession = require('../models/PlaybackSession');
-const { requireAuth } = require('../middleware/auth');
+/**
+ * Sync Routes — /api/sync
+ * Migrated from Mongoose to Prisma (MySQL).
+ *
+ * The sync endpoints use a "last-write-wins" strategy for offline changes.
+ * All child-ownership checks are performed before applying any mutation.
+ */
+
+const express  = require('express');
+const prisma   = require('../lib/prisma');
+const { computeAgeBand } = require('../lib/parentHelpers');
+const { requireAuth }    = require('../middleware/auth');
 
 const router = express.Router();
 
-/**
- * GET /api/sync/pull
- * Pull all data updated since a given timestamp
- * Used by client to sync cloud → local
- */
+// ─── GET /api/sync/pull ───────────────────────────────────────────────────────
 router.get('/pull', requireAuth, async (req, res) => {
   try {
-    const { since } = req.query;
-    const sinceDate = since ? new Date(since) : new Date(0);
+    const sinceDate = req.query.since ? new Date(req.query.since) : new Date(0);
 
-    // Get all children for this parent (updated since timestamp)
-    const children = await Child.find({
-      parentId: req.parentId,
-      updatedAt: { $gt: sinceDate },
+    // Children updated since the last pull
+    const children = await prisma.child.findMany({
+      where:   { parentId: req.parentId, updatedAt: { gt: sinceDate } },
+      include: { interests: true },
     });
 
-    // Get all child IDs
-    const allChildren = await Child.find({ parentId: req.parentId }).select('_id');
-    const childIds = allChildren.map(c => c._id);
-
-    // Get approvals updated since timestamp
-    const approvals = await Approval.find({
-      childId: { $in: childIds },
-      updatedAt: { $gt: sinceDate },
-    }).populate('storyId', 'title category coverUrl');
-
-    // Get stories created by this parent (updated since timestamp)
-    const parentStories = await Story.find({
-      createdByParentId: req.parentId,
-      updatedAt: { $gt: sinceDate },
+    // All child IDs for this parent (needed for approvals / sessions filter)
+    const allChildren = await prisma.child.findMany({
+      where:  { parentId: req.parentId },
+      select: { id: true },
     });
+    const childIds = allChildren.map((c) => c.id);
 
-    // Get playback sessions for all children
-    const sessions = await PlaybackSession.find({
-      childId: { $in: childIds },
-      updatedAt: { $gt: sinceDate },
-    });
-
-    // Get current server time for next sync
-    const serverTime = new Date().toISOString();
+    const [approvals, parentStories, sessions] = await Promise.all([
+      prisma.approval.findMany({
+        where:   { childId: { in: childIds }, updatedAt: { gt: sinceDate } },
+        include: { allowedModes: true, story: { select: { id: true, title: true, category: true, coverUrl: true } } },
+      }),
+      prisma.story.findMany({
+        where:   { createdByParentId: req.parentId, updatedAt: { gt: sinceDate } },
+        include: { pages: true },
+      }),
+      prisma.playbackSession.findMany({
+        where: { childId: { in: childIds }, updatedAt: { gt: sinceDate } },
+      }),
+    ]);
 
     res.json({
-      success: true,
-      serverTime,
-      data: {
-        children,
-        approvals,
-        parentStories,
-        sessions,
-      },
-      counts: {
-        children: children.length,
-        approvals: approvals.length,
-        parentStories: parentStories.length,
-        sessions: sessions.length,
-      },
+      success:    true,
+      serverTime: new Date().toISOString(),
+      data:       { children, approvals, parentStories, sessions },
+      counts:     { children: children.length, approvals: approvals.length, parentStories: parentStories.length, sessions: sessions.length },
     });
   } catch (error) {
     console.error('Sync pull error:', error.message);
@@ -70,15 +57,10 @@ router.get('/pull', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * POST /api/sync/push
- * Push offline changes from client to cloud
- * Cloud is the source of truth - uses "last write wins"
- */
+// ─── POST /api/sync/push ──────────────────────────────────────────────────────
 router.post('/push', requireAuth, async (req, res) => {
   try {
     const { actions = [] } = req.body;
-
     if (!Array.isArray(actions)) {
       return res.status(400).json({ error: 'actions must be an array' });
     }
@@ -91,158 +73,192 @@ router.post('/push', requireAuth, async (req, res) => {
 
       try {
         switch (type) {
-          // Child Profile Actions
+
+          // ── Update child profile ─────────────────────────────────────────
           case 'UPDATE_CHILD': {
-            const child = await Child.findOne({
-              _id: payload.childId,
-              parentId: req.parentId,
+            const child = await prisma.child.findFirst({
+              where: { id: parseInt(payload.childId, 10), parentId: req.parentId },
             });
-            if (child && child.updatedAt < actionTime) {
-              Object.assign(child, payload.updates);
-              await child.save();
-              results.push({ type, success: true, id: payload.childId });
-            } else {
+            if (!child || child.updatedAt >= actionTime) {
               results.push({ type, success: false, reason: 'stale' });
+              break;
             }
+
+            const updates = { ...payload.updates };
+            if (updates.age !== undefined) {
+              updates.ageBand = computeAgeBand(updates.age);
+            }
+
+            // Handle interests separately
+            if (updates.interests !== undefined) {
+              await prisma.childInterest.deleteMany({ where: { childId: child.id } });
+              updates.interests = { create: updates.interests.map((i) => ({ interest: i })) };
+            }
+
+            await prisma.child.update({ where: { id: child.id }, data: updates });
+            results.push({ type, success: true, id: payload.childId });
             break;
           }
 
-          // Approval Actions
+          // ── Approve / unapprove a story ──────────────────────────────────
           case 'APPROVE_STORY': {
-            const child = await Child.findOne({
-              _id: payload.childId,
-              parentId: req.parentId,
+            const child = await prisma.child.findFirst({
+              where: { id: parseInt(payload.childId, 10), parentId: req.parentId },
             });
-            if (!child) {
-              results.push({ type, success: false, reason: 'child_not_found' });
+            if (!child) { results.push({ type, success: false, reason: 'child_not_found' }); break; }
+
+            const existing = await prisma.approval.findFirst({
+              where: { childId: child.id, storyId: parseInt(payload.storyId, 10) },
+            });
+
+            if (existing && existing.updatedAt >= actionTime) {
+              results.push({ type, success: false, reason: 'stale' });
               break;
             }
 
-            const existing = await Approval.findOne({
-              childId: payload.childId,
-              storyId: payload.storyId,
+            const modes = payload.allowedModes || ['nativeTTS', 'readAlone'];
+
+            await prisma.$transaction(async (tx) => {
+              const approval = await tx.approval.upsert({
+                where:  { childId_storyId: { childId: child.id, storyId: parseInt(payload.storyId, 10) } },
+                create: { childId: child.id, storyId: parseInt(payload.storyId, 10), isApproved: payload.isApproved, approvedByParentId: req.parentId },
+                update: { isApproved: payload.isApproved, approvedByParentId: req.parentId },
+              });
+              await tx.approvalMode.deleteMany({ where: { approvalId: approval.id } });
+              await tx.approvalMode.createMany({ data: modes.map((mode) => ({ approvalId: approval.id, mode })) });
             });
 
-            if (!existing || existing.updatedAt < actionTime) {
-              await Approval.findOneAndUpdate(
-                { childId: payload.childId, storyId: payload.storyId },
-                {
-                  isApproved: payload.isApproved,
-                  allowedModes: payload.allowedModes || ['nativeTTS', 'readAlone'],
-                  approvedByParentId: req.parentId,
-                  updatedAt: actionTime,
-                },
-                { upsert: true }
-              );
-              results.push({ type, success: true });
-            } else {
-              results.push({ type, success: false, reason: 'stale' });
-            }
+            results.push({ type, success: true });
             break;
           }
 
+          // ── Toggle favorite ──────────────────────────────────────────────
           case 'TOGGLE_FAVORITE': {
-            const approval = await Approval.findById(payload.approvalId);
-            if (approval && approval.updatedAt < actionTime) {
-              approval.isFavorite = payload.isFavorite;
-              approval.updatedAt = actionTime;
-              await approval.save();
-              results.push({ type, success: true });
-            } else {
-              results.push({ type, success: false, reason: 'stale' });
-            }
-            break;
-          }
-
-          // Playback/Progress Actions
-          case 'UPDATE_PROGRESS': {
-            const child = await Child.findOne({
-              _id: payload.childId,
-              parentId: req.parentId,
+            const approval = await prisma.approval.findUnique({
+              where: { id: parseInt(payload.approvalId, 10) },
             });
-            if (!child) {
-              results.push({ type, success: false, reason: 'child_not_found' });
+            if (!approval || approval.updatedAt >= actionTime) {
+              results.push({ type, success: false, reason: 'stale' });
               break;
             }
-
-            const session = await PlaybackSession.findOneAndUpdate(
-              { childId: payload.childId, storyId: payload.storyId },
-              {
-                lastPageIndex: payload.lastPageIndex,
-                lastPositionSec: payload.lastPositionSec || 0,
-                totalListenTimeSec: payload.totalListenTimeSec || 0,
-                lastMode: payload.lastMode || 'readAlone',
-                $inc: { sessionCount: 1 },
-                updatedAt: actionTime,
-              },
-              { upsert: true, new: true }
-            );
-            results.push({ type, success: true, sessionId: session._id });
+            await prisma.approval.update({
+              where: { id: approval.id },
+              data:  { isFavorite: payload.isFavorite },
+            });
+            results.push({ type, success: true });
             break;
           }
 
-          // Story Creation (offline-created stories)
-          case 'CREATE_STORY': {
-            const story = new Story({
-              ...payload,
-              sourceType: payload.sourceType || 'parentCreated',
-              createdByParentId: req.parentId,
+          // ── Update reading / listening progress ──────────────────────────
+          case 'UPDATE_PROGRESS': {
+            const child = await prisma.child.findFirst({
+              where: { id: parseInt(payload.childId, 10), parentId: req.parentId },
             });
-            await story.save();
-            results.push({ type, success: true, storyId: story._id });
+            if (!child) { results.push({ type, success: false, reason: 'child_not_found' }); break; }
+
+            const storyId   = parseInt(payload.storyId, 10);
+            const pageIndex = payload.lastPageIndex || 0;
+            const total     = payload.totalPages    || 1;
+
+            // Determine completion
+            const isCompleted  = pageIndex >= total - 1;
+            const completedAt  = isCompleted ? new Date() : undefined;
+
+            const session = await prisma.playbackSession.upsert({
+              where:  { childId_storyId: { childId: child.id, storyId } },
+              create: {
+                childId:    child.id,
+                storyId,
+                lastPageIndex:    pageIndex,
+                totalPages:       total,
+                lastPositionSec:  payload.lastPositionSec    || 0,
+                totalListenTimeSec: payload.totalListenTimeSec || 0,
+                lastMode:         payload.lastMode || 'readAlone',
+                isCompleted,
+                ...(completedAt && { completedAt }),
+              },
+              update: {
+                lastPageIndex:    pageIndex,
+                totalPages:       total,
+                lastPositionSec:  payload.lastPositionSec    || 0,
+                totalListenTimeSec: payload.totalListenTimeSec || 0,
+                lastMode:         payload.lastMode || 'readAlone',
+                sessionCount:     { increment: 1 },
+                isCompleted,
+                ...(completedAt && { completedAt }),
+              },
+            });
+
+            results.push({ type, success: true, sessionId: session.id });
+            break;
+          }
+
+          // ── Create an offline-authored story ─────────────────────────────
+          case 'CREATE_STORY': {
+            const text = payload.text || '';
+            const words = text.split(/\s+/).filter(Boolean).length;
+            const pages = text.split('\n\n').map((p) => p.trim()).filter(Boolean);
+
+            const story = await prisma.story.create({
+              data: {
+                ...payload,
+                sourceType:        payload.sourceType || 'parentCreated',
+                createdByParentId: req.parentId,
+                wordCount:         words,
+                pages: {
+                  create: pages.map((content, pageIndex) => ({ pageIndex, content })),
+                },
+              },
+            });
+            results.push({ type, success: true, storyId: story.id });
             break;
           }
 
           default:
             results.push({ type, success: false, reason: 'unknown_action' });
         }
-      } catch (actionError) {
-        console.error(`Sync action ${type} error:`, actionError.message);
-        results.push({ type, success: false, reason: actionError.message });
+      } catch (actionErr) {
+        console.error(`Sync action ${type} error:`, actionErr.message);
+        results.push({ type, success: false, reason: actionErr.message });
       }
     }
 
-    res.json({
-      success: true,
-      results,
-      serverTime: new Date().toISOString(),
-    });
+    res.json({ success: true, results, serverTime: new Date().toISOString() });
   } catch (error) {
     console.error('Sync push error:', error.message);
     res.status(500).json({ error: 'Sync failed' });
   }
 });
 
-/**
- * GET /api/sync/status
- * Get sync status and server time
- */
+// ─── GET /api/sync/status ─────────────────────────────────────────────────────
 router.get('/status', requireAuth, async (req, res) => {
   try {
-    const allChildren = await Child.find({ parentId: req.parentId }).select('_id');
-    const childIds = allChildren.map(c => c._id);
+    const allChildren = await prisma.child.findMany({
+      where:  { parentId: req.parentId },
+      select: { id: true },
+    });
+    const childIds = allChildren.map((c) => c.id);
 
-    // Get counts
-    const counts = {
-      children: allChildren.length,
-      approvals: await Approval.countDocuments({ childId: { $in: childIds } }),
-      stories: await Story.countDocuments({ createdByParentId: req.parentId }),
-      sessions: await PlaybackSession.countDocuments({ childId: { $in: childIds } }),
-    };
+    const [approvalCount, storyCount, sessionCount] = await Promise.all([
+      prisma.approval.count({ where: { childId: { in: childIds } } }),
+      prisma.story.count({ where: { createdByParentId: req.parentId } }),
+      prisma.playbackSession.count({ where: { childId: { in: childIds } } }),
+    ]);
 
-    // Get latest update times
-    const latestChild = await Child.findOne({ parentId: req.parentId }).sort({ updatedAt: -1 });
-    const latestApproval = await Approval.findOne({ childId: { $in: childIds } }).sort({ updatedAt: -1 });
-    const latestStory = await Story.findOne({ createdByParentId: req.parentId }).sort({ updatedAt: -1 });
+    const [latestChild, latestApproval, latestStory] = await Promise.all([
+      prisma.child.findFirst({ where: { parentId: req.parentId }, orderBy: { updatedAt: 'desc' } }),
+      prisma.approval.findFirst({ where: { childId: { in: childIds } }, orderBy: { updatedAt: 'desc' } }),
+      prisma.story.findFirst({ where: { createdByParentId: req.parentId }, orderBy: { updatedAt: 'desc' } }),
+    ]);
 
     res.json({
-      success: true,
+      success:    true,
       serverTime: new Date().toISOString(),
-      counts,
+      counts:     { children: allChildren.length, approvals: approvalCount, stories: storyCount, sessions: sessionCount },
       lastUpdated: {
-        children: latestChild?.updatedAt || null,
+        children:  latestChild?.updatedAt   || null,
         approvals: latestApproval?.updatedAt || null,
-        stories: latestStory?.updatedAt || null,
+        stories:   latestStory?.updatedAt    || null,
       },
     });
   } catch (error) {

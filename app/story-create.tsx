@@ -91,11 +91,19 @@ const STORY_EMOJIS = [
     const agent = AI_AGENTS.find(a => a.id === selectedAgent);
     
     try {
+      // Combine the selected theme with any profile interests so the backend
+      // has the richest possible context for generation.
+      const profileInterests = profile?.interests ?? [];
+      const interestsList = [
+        ...(theme?.name ? [theme.name] : []),
+        ...profileInterests.filter(i => i !== theme?.name),
+      ];
+
       const result = await generateStory({
         childName: includeChild && profile?.name ? profile.name : undefined,
         age: profile?.age || 5,
         readingLevel: profile?.readingLevel || 'Beginner',
-        interests: [theme?.name || 'Adventure'],
+        interests: interestsList,
         title: title.trim() || undefined,
         theme: theme?.name,
         mainCharacter: mainCharacter || undefined,
@@ -118,6 +126,7 @@ const STORY_EMOJIS = [
           theme: selectedTheme,
           mainCharacter: mainCharacter || undefined,
           length: storyLength,
+          readingLevel: profile?.readingLevel,
         });
         if (!title.trim()) {
           setTitle('A Magical Adventure');
@@ -133,6 +142,7 @@ const STORY_EMOJIS = [
         theme: selectedTheme,
         mainCharacter: mainCharacter || undefined,
         length: storyLength,
+        readingLevel: profile?.readingLevel,
       });
       if (!title.trim()) {
         setTitle('A Magical Adventure');

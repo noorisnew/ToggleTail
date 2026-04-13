@@ -255,6 +255,12 @@ export default function ParentHomeScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+                <View style={styles.recordVoiceHint}>
+                  <Text style={styles.recordVoiceHintEmoji}>💡</Text>
+                  <Text style={styles.recordVoiceHintText}>
+                    Tap the 🎙️ button next to any story below to record your narration. Your voice will play when your child reads that story!
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -707,6 +713,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  recordVoiceHint: {
+    flexDirection: 'row',
+    backgroundColor: '#FEF3C7',
+    padding: Spacing.md,
+    borderRadius: 10,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+  },
+  recordVoiceHintEmoji: {
+    fontSize: 18,
+  },
+  recordVoiceHintText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
   },
   // Create Story Button Styles
   createStoryButton: {

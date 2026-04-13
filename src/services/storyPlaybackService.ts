@@ -185,6 +185,7 @@ async function playAINarration(
  * @param ttsConfig - Configuration for TTS voice
  * @param callbacks - Callbacks for playback lifecycle events
  * @param voiceId - Optional AI voice ID for ElevenLabs (default: 'Rachel')
+ * @param clonedVoiceId - Optional ElevenLabs voice ID cloned from parent's own recording
  * @returns The narration source that was ultimately used
  */
 export async function playStoryPage(
@@ -195,7 +196,8 @@ export async function playStoryPage(
   hasParentRecording: boolean,
   ttsConfig: TTSConfig,
   callbacks: PlaybackCallbacks,
-  voiceId?: string
+  voiceId?: string,
+  clonedVoiceId?: string
 ): Promise<PlaybackResult> {
   // Resolve which source to use
   const source = resolveNarrationSource(narrationMode, hasParentRecording);
@@ -212,11 +214,15 @@ export async function playStoryPage(
       return { source: 'parent' };
     }
 
-    // Parent recording failed - fallback to AI narration (ElevenLabs → TTS)
+    // Parent recording failed - fallback to AI narration
+    // Prefer cloned voice (sounds like the parent) over the generic AI voice
     callbacks.onParentFailed?.();
-    return playAINarration(storyId, pageIndex, pageText, ttsConfig, callbacks, voiceId);
+    return playAINarration(storyId, pageIndex, pageText, ttsConfig, callbacks, clonedVoiceId ?? voiceId);
   }
 
-  // AI narration mode: ElevenLabs with TTS fallback
-  return playAINarration(storyId, pageIndex, pageText, ttsConfig, callbacks, voiceId);
+  // AI narration or Human mode without a recording for this page.
+  // In Human mode, prefer the cloned voice if the parent has created one.
+  const effectiveVoiceId =
+    narrationMode === 'Human' && clonedVoiceId ? clonedVoiceId : voiceId;
+  return playAINarration(storyId, pageIndex, pageText, ttsConfig, callbacks, effectiveVoiceId);
 }

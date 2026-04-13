@@ -16,7 +16,7 @@ import {
     isOnline,
 } from '../storage/libraryCacheStorage';
 import { InterestType } from '../storage/profileStorage';
-import { addStory, Story } from '../storage/storyStorage';
+import { Story } from '../storage/storyStorage';
 
 /**
  * Genre to category mapping for preloaded stories
@@ -167,11 +167,13 @@ export async function generateStory(params: GenerateStoryParams): Promise<Story 
       throw new Error(data.error || 'Failed to generate story');
     }
 
-    // Create story object
+    // Return story data for the caller to review and save.
+    // Saving is intentionally deferred to the UI (story-create handleSave) so
+    // the parent can edit before the story appears in the library.
     const story: Story = {
       id: Date.now().toString(),
-      title: data.story?.title || params.title || 'Untitled Story',
-      text: data.story?.text || '',
+      title: data.story?.title || data.title || params.title || 'Untitled Story',
+      text: data.story?.text || data.text || '',
       createdAt: new Date().toISOString(),
       approved: false,
       difficulty: params.readingLevel === 'Beginner' ? 'Easy' : params.readingLevel === 'Advanced' ? 'Hard' : 'Medium',
@@ -180,9 +182,6 @@ export async function generateStory(params: GenerateStoryParams): Promise<Story 
       isFavorite: false,
       readCount: 0,
     };
-
-    // Save to storage
-    await addStory(story);
 
     return { ...story, success: true };
   } catch (error) {
