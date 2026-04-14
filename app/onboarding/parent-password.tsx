@@ -169,13 +169,10 @@ export default function ParentPasswordScreen() {
       if (result.success) {
         router.push('/onboarding/password-saved');
       } else {
-        // Show error (using Alert as fallback)
-        const { Alert } = await import('react-native');
         Alert.alert('Error', result.error || 'Failed to save password. Please try again.');
       }
     } catch (error) {
       console.error('[ParentPassword] Exception:', error);
-      const { Alert } = await import('react-native');
       Alert.alert('Error', `An unexpected error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsSubmitting(false);

@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { seedStoriesFromLibrary } from '@/src/data/seeder';
+import { autoApprovePreloadedStories } from '@/src/domain/services/storyApprovalService';
 import { setupGlobalErrorHandling } from '@/src/services/loggerService';
 import { cleanupLegacyAuthStorage } from '@/src/services/parentGateService';
 
@@ -17,11 +18,13 @@ export default function RootLayout() {
     setupGlobalErrorHandling();
     // Clean up legacy auth storage keys on app startup
     cleanupLegacyAuthStorage();
-    // Seed preloaded stories into storage (required for approval flow)
-    seedStoriesFromLibrary().then((result) => {
+    // Seed preloaded stories into storage and auto-approve them
+    seedStoriesFromLibrary().then(async (result) => {
       if (result.seededCount > 0) {
         console.log(`Seeded ${result.seededCount} preloaded stories`);
       }
+      // Auto-approve all preloaded stories so they're visible by default
+      await autoApprovePreloadedStories();
     });
   }, []);
 

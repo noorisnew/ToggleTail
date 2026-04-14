@@ -966,13 +966,6 @@ export default function StoryViewScreen() {
               end={{ x: 1, y: 0 }}
             />
           </View>
-          <View style={styles.progressStars}>
-            {pages.map((_, idx) => (
-              <Text key={idx} style={styles.progressStar}>
-                {idx <= currentPage ? '⭐' : '☆'}
-              </Text>
-            ))}
-          </View>
         </View>
 
         {/* Premium Story Card */}
@@ -1501,16 +1494,6 @@ const styles = StyleSheet.create({
   premiumProgressFill: {
     height: '100%',
     borderRadius: 5,
-  },
-  progressStars: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 10,
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  progressStar: {
-    fontSize: 16,
   },
   
   // Premium Story Card

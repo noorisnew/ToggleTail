@@ -3,7 +3,8 @@
  * Location: src/domain/services/storyApprovalService.ts
  * 
  * Manages parent approval of stories for child visibility.
- * Preloaded stories are NOT visible to children until approved by a parent.
+ * Preloaded stories ARE visible by default (auto-approved on startup).
+ * AI-generated stories require parent approval before becoming visible.
  * 
  * Child View: Only sees stories with approved=true
  * Parent View: Can approve/unapprove stories individually or in batches
@@ -442,4 +443,39 @@ export async function getVisibleStoriesForChild(category?: string): Promise<Chil
   }
   
   return filtered.map(storyToChildDisplay);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Migrations
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Auto-approve all preloaded stories
+ * 
+ * Called on app startup to ensure preloaded stories are visible by default.
+ * This migrates existing installs where preloaded stories were hidden by default.
+ */
+export async function autoApprovePreloadedStories(): Promise<number> {
+  try {
+    const stories = await getStories() as StoryWithPreloadedMeta[];
+    let approvedCount = 0;
+    
+    const updatedStories = stories.map(story => {
+      if (isPreloaded(story) && !story.approved) {
+        approvedCount++;
+        return { ...story, approved: true };
+      }
+      return story;
+    });
+    
+    if (approvedCount > 0) {
+      await saveStories(updatedStories);
+      console.log(`[StoryApproval] Auto-approved ${approvedCount} preloaded stories`);
+    }
+    
+    return approvedCount;
+  } catch (error) {
+    console.error('[StoryApproval] Auto-approve failed:', normalizeError(error));
+    return 0;
+  }
 }

@@ -15,6 +15,43 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import bcrypt from 'bcryptjs';
 import * as SecureStore from 'expo-secure-store';
 
+// ─── Crypto bootstrap ────────────────────────────────────────────────────────
+// bcryptjs 3.x UMD build tries three sources for random bytes, in order:
+//   1. globalThis.crypto.getRandomValues  — uses the bare identifier `crypto`,
+//      which may not be defined as a global in Hermes (only `globalThis.crypto`
+//      is guaranteed).
+//   2. nodeCrypto.randomBytes             — resolved to `false` by Metro because
+//      bcryptjs's own package.json has "browser": {"crypto": false}.
+//   3. bcrypt.setRandomFallback()         — THIS is our fix.
+//
+// Calling setRandomFallback at module load time guarantees bcrypt always has a
+// working entropy source. globalThis.crypto.getRandomValues is provided by
+// Hermes in React Native 0.73+.
+//
+// IMPORTANT: In Expo Go on iOS, globalThis.crypto may exist but getRandomValues
+// can fail silently. Always use the Math.random fallback as it's sufficient for
+// development/testing purposes.
+bcrypt.setRandomFallback((len: number): number[] => {
+  // Try crypto.getRandomValues first (secure)
+  try {
+    const crypto = (globalThis as any).crypto;
+    if (crypto?.getRandomValues) {
+      const buf = new Uint8Array(len);
+      crypto.getRandomValues(buf);
+      return Array.from(buf);
+    }
+  } catch {
+    // Fall through to Math.random
+  }
+  // Fallback: Math.random (less secure but works everywhere)
+  // This is acceptable for development/Expo Go testing
+  const buf: number[] = [];
+  for (let i = 0; i < len; i++) {
+    buf.push(Math.floor(Math.random() * 256));
+  }
+  return buf;
+});
+
 // Storage keys
 // SecureStore key for password hash (secure, encrypted)
 const SECURE_PASSWORD_HASH_KEY = 'toggletail_parent_password_hash';
@@ -33,6 +70,10 @@ const BCRYPT_ROUNDS = 10;
  * Hash password using bcrypt
  */
 const hashPassword = async (password: string): Promise<string> => {
+  // Validate password is a non-empty string (bcrypt will throw if not)
+  if (typeof password !== 'string' || password.length === 0) {
+    throw new Error('Password must be a non-empty string');
+  }
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   return `v2:${hash}`; // v2 prefix indicates bcrypt hash
 };

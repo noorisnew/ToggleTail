@@ -2,8 +2,8 @@
  * PreloadedSeeder - First-run seeding of preloaded stories
  * 
  * Handles importing stories from the preloaded manifest into local storage.
- * Stories are seeded once per manifest version and are not visible to
- * children until explicitly approved by a parent.
+ * Stories are seeded once per manifest version and are visible to children
+ * by default (approved=true).
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -135,7 +135,7 @@ function gradeToDifficulty(gradeLevel?: string): Difficulty {
 
 /**
  * Convert ManifestStory to Story for storage
- * Stories are NOT approved by default - requires parent approval
+ * Preloaded stories are approved by default so children can read them immediately
  */
 function manifestStoryToStory(
   manifestStory: ManifestStory,
@@ -147,7 +147,7 @@ function manifestStoryToStory(
     title: manifestStory.title,
     text: storyText,
     createdAt: new Date().toISOString(),
-    approved: false, // CRITICAL: Not visible to child by default
+    approved: true, // Preloaded stories are visible by default
     difficulty: gradeToDifficulty(manifestStory.gradeLevel),
     tags: [manifestStory.genre, manifestStory.language],
     isFavorite: false,
