@@ -41,11 +41,11 @@ export type AIVoiceOption = {
 
 /** Available AI voice options for UI selection */
 export const AI_VOICE_OPTIONS: AIVoiceOption[] = [
-  { id: 'Rachel', name: 'Rachel', emoji: '👩', description: 'Warm storyteller' },
-  { id: 'Dorothy', name: 'Dorothy', emoji: '👵', description: 'Gentle grandma' },
-  { id: 'Josh', name: 'Josh', emoji: '👦', description: 'Fun & playful' },
-  { id: 'Adam', name: 'Adam', emoji: '👨', description: 'Calm narrator' },
-  { id: 'Sarah', name: 'Sarah', emoji: '👧', description: 'Bright & cheerful' },
+  { id: 'Rachel',  name: 'Rachel',  emoji: '👩', description: 'Warm & natural storyteller' },
+  { id: 'Dorothy', name: 'Dorothy', emoji: '👵', description: 'Gentle & soothing grandma' },
+  { id: 'Josh',    name: 'Josh',    emoji: '👦', description: 'Fun & conversational' },
+  { id: 'Adam',    name: 'Adam',    emoji: '👨', description: 'Deep & articulate narrator' },
+  { id: 'Sarah',   name: 'Sarah',   emoji: '👧', description: 'Bright & lively' },
 ];
 
 /** Default narration settings */

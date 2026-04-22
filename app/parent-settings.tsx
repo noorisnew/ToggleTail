@@ -17,6 +17,13 @@ import {
 import { Colors, Shadows } from '../constants/design';
 import { signOut } from '../src/data/storage/authStorage';
 import {
+    AI_VOICE_OPTIONS,
+    AIVoiceId,
+    getNarrationSettings,
+    NarrationSettings,
+    saveNarrationSettings,
+} from '../src/data/storage/narrationStorage';
+import {
     AvatarType,
     ChildProfile,
     getProfile,
@@ -77,6 +84,7 @@ export default function ParentSettingsScreen() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [profile, setProfile] = useState<ChildProfile | null>(null);
   const [screenTime, setScreenTime] = useState<ScreenTimeData | null>(null);
+  const [narrationSettings, setNarrationSettings] = useState<NarrationSettings | null>(null);
   const [expandedSection, setExpandedSection] = useState<SettingsSection | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
@@ -89,15 +97,29 @@ export default function ParentSettingsScreen() {
   );
 
   const loadData = async () => {
-    const [settingsData, profileData, screenTimeData] = await Promise.all([
+    const [settingsData, profileData, screenTimeData, narrationData] = await Promise.all([
       getSettings(),
       getProfile(),
       getScreenTime(),
+      getNarrationSettings(),
     ]);
     setSettings(settingsData);
     setProfile(profileData);
     setScreenTime(screenTimeData);
+    setNarrationSettings(narrationData);
     setTempName(profileData?.name || '');
+  };
+
+  const handleUpdateNarration = async (updates: Partial<NarrationSettings>) => {
+    if (!narrationSettings) return;
+    const updated = { ...narrationSettings, ...updates };
+    setNarrationSettings(updated);
+    setHasChanges(true);
+    await saveNarrationSettings(updated);
+    // Keep settingsStorage.narrationMode in sync
+    if (updates.preferredSource) {
+      await updateSettings({ narrationMode: updates.preferredSource });
+    }
   };
 
   const handleUpdateSettings = async (updates: Partial<AppSettings>) => {
@@ -388,7 +410,7 @@ export default function ParentSettingsScreen() {
             <View>
               <Text style={styles.sectionTitle}>Voice & Audio</Text>
               <Text style={styles.sectionSubtitle}>
-                Speed: {settings.voiceSpeed}x | {settings.narrationMode} Narration
+                Speed: {settings.voiceSpeed}x | {narrationSettings?.preferredSource ?? settings.narrationMode} Narration
               </Text>
             </View>
           </View>
@@ -406,31 +428,58 @@ export default function ParentSettingsScreen() {
                 <TouchableOpacity
                   style={[
                     styles.modeButton,
-                    settings.narrationMode === 'AI' && styles.modeButtonActive
+                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && styles.modeButtonActive
                   ]}
-                  onPress={() => handleUpdateSettings({ narrationMode: 'AI' })}
+                  onPress={() => handleUpdateNarration({ preferredSource: 'AI' })}
                 >
                   <Text style={styles.modeEmoji}>🤖</Text>
                   <Text style={[
                     styles.modeText,
-                    settings.narrationMode === 'AI' && styles.modeTextActive
+                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && styles.modeTextActive
                   ]}>AI Voice</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.modeButton,
-                    settings.narrationMode === 'Human' && styles.modeButtonActive
+                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'Human' && styles.modeButtonActive
                   ]}
-                  onPress={() => handleUpdateSettings({ narrationMode: 'Human' })}
+                  onPress={() => handleUpdateNarration({ preferredSource: 'Human' })}
                 >
                   <Text style={styles.modeEmoji}>🎤</Text>
                   <Text style={[
                     styles.modeText,
-                    settings.narrationMode === 'Human' && styles.modeTextActive
+                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'Human' && styles.modeTextActive
                   ]}>Your Voice</Text>
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* AI Voice Picker — only shown when AI mode is active */}
+            {(narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && (
+              <View style={styles.voicePickerContainer}>
+                <Text style={styles.modeSelectorLabel}>AI Storyteller Voice</Text>
+                <View style={styles.voiceGrid}>
+                  {AI_VOICE_OPTIONS.map((voice) => (
+                    <TouchableOpacity
+                      key={voice.id}
+                      style={[
+                        styles.voiceCard,
+                        narrationSettings?.aiVoiceId === voice.id && styles.voiceCardActive,
+                      ]}
+                      onPress={() => handleUpdateNarration({ aiVoiceId: voice.id as AIVoiceId })}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.voiceEmoji}>{voice.emoji}</Text>
+                      <Text style={[
+                        styles.voiceName,
+                        narrationSettings?.aiVoiceId === voice.id && styles.voiceNameActive,
+                      ]}>{voice.name}</Text>
+                      <Text style={styles.voiceDesc}>{voice.description}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* Voice Speed */}
             <View style={styles.sliderContainer}>
@@ -1039,8 +1088,46 @@ const styles = StyleSheet.create({
   modeTextActive: {
     color: '#7C3AED',
   },
-  
-  // Genres
+
+  // AI Voice Picker
+  voicePickerContainer: {
+    marginTop: 16,
+  },
+  voiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  voiceCard: {
+    width: '47%',
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  voiceCardActive: {
+    backgroundColor: '#EDE9FE',
+    borderWidth: 2,
+    borderColor: '#7C3AED',
+  },
+  voiceEmoji: {
+    fontSize: 26,
+    marginBottom: 4,
+  },
+  voiceName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 2,
+  },
+  voiceNameActive: {
+    color: '#7C3AED',
+  },
+  voiceDesc: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
   genresLabel: {
     fontSize: 15,
     fontWeight: '600',

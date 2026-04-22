@@ -383,6 +383,8 @@ export type ChildDisplayStory = {
   text?: string;
   author?: string;
   emoji?: string;
+  readCount?: number;
+  isFavorite?: boolean;
 };
 
 /**
@@ -417,6 +419,8 @@ function storyToChildDisplay(story: StoryWithPreloadedMeta): ChildDisplayStory {
     text: story.text,
     author: story.preloaded?.author,
     emoji: (story as any).emoji,
+    readCount: story.readCount ?? 0,
+    isFavorite: story.isFavorite ?? false,
   };
 }
 

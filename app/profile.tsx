@@ -162,21 +162,6 @@ export default function ProfileScreen() {
               <Text style={styles.statEmoji}>⭐</Text>
             </View>
           </View>
-
-          {/* Parent Settings Link */}
-          <TouchableOpacity
-            style={styles.parentSettingsLink}
-            onPress={() => router.push('/parent-settings')}
-          >
-            <View style={styles.parentSettingsContent}>
-              <Text style={styles.parentSettingsIcon}>⚙️</Text>
-              <View>
-                <Text style={styles.parentSettingsTitle}>Parent Settings</Text>
-                <Text style={styles.parentSettingsDesc}>Time limits, reading level, content filters</Text>
-              </View>
-            </View>
-            <Text style={styles.parentSettingsArrow}>→</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -332,43 +317,6 @@ const styles = StyleSheet.create({
   },
   statEmoji: {
     fontSize: 40,
-  },
-
-  // Parent Settings Link
-  parentSettingsLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: BorderRadius.card,
-    padding: Spacing.lg,
-    marginTop: Spacing.lg,
-    borderWidth: 2,
-    borderColor: Colors.primaryStart,
-  },
-  parentSettingsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  parentSettingsIcon: {
-    fontSize: 28,
-    marginRight: Spacing.md,
-  },
-  parentSettingsTitle: {
-    fontSize: Typography.sizes.body,
-    fontWeight: Typography.weights.bold,
-    color: Colors.primaryStart,
-  },
-  parentSettingsDesc: {
-    fontSize: Typography.sizes.small,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  parentSettingsArrow: {
-    fontSize: 20,
-    color: Colors.primaryStart,
-    fontWeight: Typography.weights.bold,
   },
 
   // Modal Styles

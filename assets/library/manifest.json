@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "lastUpdated": "2026-03-12",
+  "lastUpdated": "2026-04-22",
   "genres": [
     {
       "id": "animals",
@@ -119,6 +119,42 @@
       "author": "Aesop"
     },
     {
+      "id": "animal-007",
+      "title": "The Crow and the Pitcher",
+      "genre": "animals",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🐦‍⬛",
+      "preview": "A crow was very thirsty. She flew over the hot, dry land looking for water.",
+      "contentFile": "animal-007.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "animal-008",
+      "title": "The Goose That Laid the Golden Eggs",
+      "genre": "animals",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🪿",
+      "preview": "Once a farmer found a very special goose sitting in his barn.",
+      "contentFile": "animal-008.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "animal-009",
+      "title": "The Wolf in Sheep's Clothing",
+      "genre": "animals",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🐑",
+      "preview": "A hungry wolf had been watching a flock of sheep for many days.",
+      "contentFile": "animal-009.json",
+      "author": "Aesop"
+    },
+    {
       "id": "bedtime-001",
       "title": "Twinkle, Twinkle, Little Star",
       "genre": "bedtime",
@@ -165,6 +201,54 @@
       "preview": "Have you ever heard of the Sugar-Plum Tree?",
       "contentFile": "bedtime-004.json",
       "author": "Eugene Field"
+    },
+    {
+      "id": "bedtime-005",
+      "title": "The Little Cloud's Big Dream",
+      "genre": "bedtime",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "☁️",
+      "preview": "High up in the sky, there was a small white cloud named Wisp.",
+      "contentFile": "bedtime-005.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "bedtime-006",
+      "title": "The Sleepy Star",
+      "genre": "bedtime",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "⭐",
+      "preview": "Every night, the stars came out to shine in the big dark sky.",
+      "contentFile": "bedtime-006.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "bedtime-007",
+      "title": "The Bear Who Loved Honey Dreams",
+      "genre": "bedtime",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🐻",
+      "preview": "As the first snow began to fall, all the animals of the forest got ready for winter sleep.",
+      "contentFile": "bedtime-007.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "bedtime-008",
+      "title": "The River's Lullaby",
+      "genre": "bedtime",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🌊",
+      "preview": "Mara lived in a little house beside a singing river.",
+      "contentFile": "bedtime-008.json",
+      "author": "Traditional"
     },
     {
       "id": "fantasy-001",
@@ -215,6 +299,66 @@
       "author": "Hans Christian Andersen"
     },
     {
+      "id": "fantasy-005",
+      "title": "Cinderella",
+      "genre": "fantasy",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "👠",
+      "preview": "Once there was a kind and gentle girl named Cinderella.",
+      "contentFile": "fantasy-005.json",
+      "author": "Charles Perrault"
+    },
+    {
+      "id": "fantasy-006",
+      "title": "Sleeping Beauty",
+      "genre": "fantasy",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🌹",
+      "preview": "Once upon a time, a king and queen had a beautiful baby daughter.",
+      "contentFile": "fantasy-006.json",
+      "author": "Charles Perrault"
+    },
+    {
+      "id": "fantasy-007",
+      "title": "Rapunzel",
+      "genre": "fantasy",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "👸",
+      "preview": "Once there was a couple who longed for a child.",
+      "contentFile": "fantasy-007.json",
+      "author": "Brothers Grimm"
+    },
+    {
+      "id": "fantasy-008",
+      "title": "The Elves and the Shoemaker",
+      "genre": "fantasy",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "👟",
+      "preview": "Once there was a kind shoemaker who had very little leather left.",
+      "contentFile": "fantasy-008.json",
+      "author": "Brothers Grimm"
+    },
+    {
+      "id": "fantasy-009",
+      "title": "The Fisherman and the Magic Fish",
+      "genre": "fantasy",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "🐟",
+      "preview": "An old fisherman lived in a tiny hut by the sea with his wife.",
+      "contentFile": "fantasy-009.json",
+      "author": "Brothers Grimm"
+    },
+    {
       "id": "adventure-001",
       "title": "Jack and the Beanstalk",
       "genre": "adventure",
@@ -249,6 +393,78 @@
       "preview": "There were once five and twenty tin soldiers, all brothers.",
       "contentFile": "adventure-003.json",
       "author": "Hans Christian Andersen"
+    },
+    {
+      "id": "adventure-004",
+      "title": "The Three Billy Goats Gruff",
+      "genre": "adventure",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🐐",
+      "preview": "Once there were three billy goats who wanted to cross a bridge to eat the sweet green grass.",
+      "contentFile": "adventure-004.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "adventure-005",
+      "title": "Puss in Boots",
+      "genre": "adventure",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🐱",
+      "preview": "A miller left his son only a cat when he died.",
+      "contentFile": "adventure-005.json",
+      "author": "Charles Perrault"
+    },
+    {
+      "id": "adventure-006",
+      "title": "Sinbad and the Giant Bird",
+      "genre": "adventure",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 5,
+      "emoji": "🦅",
+      "preview": "Sinbad the sailor had sailed the seas many times and seen many wonders.",
+      "contentFile": "adventure-006.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "adventure-007",
+      "title": "Ali Baba and the Magic Cave",
+      "genre": "adventure",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 4,
+      "emoji": "🏺",
+      "preview": "Ali Baba was a poor woodcutter who lived at the edge of a great forest.",
+      "contentFile": "adventure-007.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "adventure-008",
+      "title": "The Magic Paint Brush",
+      "genre": "adventure",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 3,
+      "emoji": "🖌️",
+      "preview": "There was once a poor boy named Ma Liang who loved to draw.",
+      "contentFile": "adventure-008.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "adventure-009",
+      "title": "The Brave Little Tailor",
+      "genre": "adventure",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 6,
+      "emoji": "🪡",
+      "preview": "One fine morning, a tailor sat sewing by his window.",
+      "contentFile": "adventure-009.json",
+      "author": "Brothers Grimm"
     },
     {
       "id": "values-001",
@@ -299,6 +515,54 @@
       "author": "Traditional"
     },
     {
+      "id": "values-005",
+      "title": "The Honest Woodcutter",
+      "genre": "values",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🪓",
+      "preview": "Once a poor woodcutter was chopping wood beside a deep river.",
+      "contentFile": "values-005.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "values-006",
+      "title": "The Wind and the Sun",
+      "genre": "values",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🌤️",
+      "preview": "One day the Wind and the Sun had an argument.",
+      "contentFile": "values-006.json",
+      "author": "Aesop"
+    },
+    {
+      "id": "values-007",
+      "title": "The Magic Mirror",
+      "genre": "values",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🪞",
+      "preview": "In a faraway kingdom, there lived a prince who had a very special mirror.",
+      "contentFile": "values-007.json",
+      "author": "Traditional"
+    },
+    {
+      "id": "values-008",
+      "title": "The River and the Stone",
+      "genre": "values",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🪨",
+      "preview": "There was once a boy named Leo who gave up too easily.",
+      "contentFile": "values-008.json",
+      "author": "Traditional"
+    },
+    {
       "id": "science-001",
       "title": "Why the Sky is Blue",
       "genre": "science",
@@ -332,6 +596,54 @@
       "emoji": "🌱",
       "preview": "Every great tree starts as a tiny seed.",
       "contentFile": "science-003.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-004",
+      "title": "The Butterfly's Big Change",
+      "genre": "science",
+      "readingLevel": "Beginner",
+      "ageRange": "3-5",
+      "duration": 2,
+      "emoji": "🦋",
+      "preview": "Once there was a tiny egg resting on a soft green leaf.",
+      "contentFile": "science-004.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-005",
+      "title": "The Story of Rainbows",
+      "genre": "science",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🌈",
+      "preview": "After the rain, if you look at the sky, you might see something magical.",
+      "contentFile": "science-005.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-006",
+      "title": "Why Leaves Change Color",
+      "genre": "science",
+      "readingLevel": "Intermediate",
+      "ageRange": "5-7",
+      "duration": 3,
+      "emoji": "🍂",
+      "preview": "Every autumn, the trees put on a dazzling show of color.",
+      "contentFile": "science-006.json",
+      "author": "Educational"
+    },
+    {
+      "id": "science-007",
+      "title": "The Life of a Star",
+      "genre": "science",
+      "readingLevel": "Advanced",
+      "ageRange": "7-9",
+      "duration": 4,
+      "emoji": "🌟",
+      "preview": "On a clear night, the sky is filled with thousands of glittering stars.",
+      "contentFile": "science-007.json",
       "author": "Educational"
     }
   ]

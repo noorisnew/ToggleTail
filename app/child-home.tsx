@@ -105,6 +105,7 @@ type DisplayStory = {
   isFavorite: boolean;
   libraryData?: ChildDisplayStory;
   emoji?: string;
+  readCount?: number;
 };
 
 export default function ChildHomeScreen() {
@@ -251,12 +252,18 @@ export default function ChildHomeScreen() {
     isFavorite: favorites.has(s._id),
     libraryData: s,
     emoji: s.emoji || CATEGORY_EMOJIS[s.category || 'Animals']?.[index % 6] || '📚',
+    readCount: s.readCount ?? 0,
   }));
 
   // Get stories for selected genre, organized by age
   const getStoriesByGenreAndAge = () => {
     if (selectedGenre === 'favorites') {
-      return { forYou: allStories.filter(s => s.isFavorite), younger: [], older: [] };
+      const favoriteStories = allStories.filter(s => s.isFavorite);
+      // Get read stories (readCount > 0) that aren't already in favorites
+      const readStories = allStories
+        .filter(s => (s.readCount ?? 0) > 0 && !s.isFavorite)
+        .sort((a, b) => (b.readCount ?? 0) - (a.readCount ?? 0)); // Most read first
+      return { forYou: favoriteStories, younger: readStories, older: [] };
     }
 
     const genreStories = allStories.filter(s => s.genre === selectedGenre);
@@ -457,19 +464,52 @@ export default function ChildHomeScreen() {
           contentContainerStyle={styles.storiesScrollContent}
         >
           {selectedGenre === 'favorites' ? (
-            forYou.length > 0 ? (
-              <View style={styles.favoritesGrid}>
-                {forYou.map((story, index) => renderStoryCard(story, index))}
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyEmoji}>💝</Text>
-                <Text style={styles.emptyText}>No favorites yet!</Text>
-                <Text style={styles.emptySubtext}>
-                  Tap the heart ❤️ on any story to add it here!
-                </Text>
-              </View>
-            )
+            <>
+              {/* Favorites Section */}
+              {forYou.length > 0 && (
+                <>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionEmoji}>❤️</Text>
+                    <View style={styles.sectionTitleContainer}>
+                      <Text style={styles.sectionTitle}>My Favorites</Text>
+                      <Text style={styles.sectionSubtitle}>Stories you love</Text>
+                    </View>
+                    <Text style={styles.sectionCount}>{forYou.length} stories</Text>
+                  </View>
+                  <View style={styles.favoritesGrid}>
+                    {forYou.map((story, index) => renderStoryCard(story, index))}
+                  </View>
+                </>
+              )}
+              
+              {/* Recently Read Section */}
+              {younger.length > 0 && (
+                <>
+                  <View style={[styles.sectionHeader, { marginTop: 24 }]}>
+                    <Text style={styles.sectionEmoji}>📖</Text>
+                    <View style={styles.sectionTitleContainer}>
+                      <Text style={styles.sectionTitle}>Recently Read</Text>
+                      <Text style={styles.sectionSubtitle}>Stories you've enjoyed</Text>
+                    </View>
+                    <Text style={styles.sectionCount}>{younger.length} stories</Text>
+                  </View>
+                  <View style={styles.favoritesGrid}>
+                    {younger.map((story, index) => renderStoryCard(story, index))}
+                  </View>
+                </>
+              )}
+              
+              {/* Empty state if no favorites AND no read stories */}
+              {forYou.length === 0 && younger.length === 0 && (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyEmoji}>💝</Text>
+                  <Text style={styles.emptyText}>No favorites yet!</Text>
+                  <Text style={styles.emptySubtext}>
+                    Tap the heart ❤️ on any story to add it here!
+                  </Text>
+                </View>
+              )}
+            </>
           ) : (
             <>
               {/* For You Section - Child's age range (shown first) */}

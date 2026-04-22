@@ -18,7 +18,7 @@ import {
 import { getStoryById } from '../src/data/api/storyApi';
 import { addEvent } from '../src/data/storage/eventLogStorage';
 import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
-import { AIVoiceId, getNarrationSettings } from '../src/data/storage/narrationStorage';
+import { AIVoiceId, getNarrationSettings, ParentVoiceLabel } from '../src/data/storage/narrationStorage';
 import { recordCompletedStoryReading } from '../src/data/storage/profileStorage';
 import { addScreenTime, checkScreenTimeLimit, startSession } from '../src/data/storage/settingsStorage';
 import { getStories, Story, updateStory } from '../src/data/storage/storyStorage';
@@ -132,6 +132,7 @@ export default function StoryViewScreen() {
   const [narrationMode, setNarrationMode] = useState<'AI' | 'Human'>('AI');
   const [aiVoiceId, setAiVoiceId] = useState<AIVoiceId>('Rachel');
   const [clonedVoiceId, setClonedVoiceId] = useState<string | undefined>();
+  const [parentVoiceLabel, setParentVoiceLabel] = useState<ParentVoiceLabel>('Parent');
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
   const [hasParentRecording, setHasParentRecording] = useState(false);
   const [isPlayingParentAudio, setIsPlayingParentAudio] = useState(false);
@@ -162,6 +163,7 @@ export default function StoryViewScreen() {
       setNarrationMode(settings.preferredSource);
       setAiVoiceId(settings.aiVoiceId);
       setClonedVoiceId(settings.clonedVoiceId);
+      setParentVoiceLabel(settings.parentVoiceLabel);
     } catch (error) {
       console.log('Could not load narration settings:', error);
     }
@@ -835,32 +837,54 @@ export default function StoryViewScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* 🔊 Listen to Story Card */}
-            <TouchableOpacity
-              style={[styles.premiumModeCard, { backgroundColor: PREMIUM_COLORS.cardPink }]}
-              onPress={() => handleSelectMode('read-to-me')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#F472B6', '#EC4899']}
-                style={styles.modeIconGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.modeIconLarge}>🔊</Text>
-              </LinearGradient>
-              <View style={styles.modeCardTextContainer}>
-                <Text style={[styles.modeCardTitlePremium, { color: '#BE185D' }]}>
-                  Listen to Story
-                </Text>
-                <Text style={styles.modeCardDescPremium}>
-                  Sit back and enjoy the narration
-                </Text>
-              </View>
-              <View style={styles.modeArrow}>
-                <Text style={styles.arrowText}>→</Text>
-              </View>
-            </TouchableOpacity>
+            {/* 🔊 Listen to Story Card — adapts to parent voice mode */}
+            {(() => {
+              const hasParentVoice = narrationMode === 'Human' && (storyRecordings?.recordings?.length ?? 0) > 0;
+              const isHumanMode = narrationMode === 'Human';
+              const cardBg = hasParentVoice ? '#F0FDF4' : isHumanMode ? '#FFFBEB' : PREMIUM_COLORS.cardPink;
+              const gradientColors: [string, string] = hasParentVoice
+                ? ['#4ADE80', '#22C55E']
+                : isHumanMode
+                ? ['#FCD34D', '#F59E0B']
+                : ['#F472B6', '#EC4899'];
+              const titleColor = hasParentVoice ? '#15803D' : isHumanMode ? '#92400E' : '#BE185D';
+              const icon = hasParentVoice ? '🎤' : isHumanMode ? '🎙️' : '🔊';
+              const title = hasParentVoice
+                ? `${parentVoiceLabel}'s Voice`
+                : isHumanMode
+                ? 'Listen to Story'
+                : 'Listen to Story';
+              const desc = hasParentVoice
+                ? `Narrated by ${parentVoiceLabel} — just for you!`
+                : isHumanMode
+                ? 'No recording yet — AI will narrate'
+                : 'Sit back and enjoy the narration';
+              return (
+                <TouchableOpacity
+                  style={[styles.premiumModeCard, { backgroundColor: cardBg }]}
+                  onPress={() => handleSelectMode('read-to-me')}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={gradientColors}
+                    style={styles.modeIconGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Text style={styles.modeIconLarge}>{icon}</Text>
+                  </LinearGradient>
+                  <View style={styles.modeCardTextContainer}>
+                    <Text style={[styles.modeCardTitlePremium, { color: titleColor }]}>
+                      {title}
+                    </Text>
+                    <Text style={styles.modeCardDescPremium}>{desc}</Text>
+                  </View>
+                  <View style={styles.modeArrow}>
+                    <Text style={styles.arrowText}>→</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })()}
 
             {/* ✨ Read with Help Card */}
             <TouchableOpacity
@@ -918,7 +942,11 @@ export default function StoryViewScreen() {
 
   const getModeLabel = () => {
     switch (selectedMode) {
-      case 'read-to-me': return '🔊 Listen Mode';
+      case 'read-to-me':
+        if (narrationMode === 'Human' && hasParentRecording) {
+          return `🎤 ${parentVoiceLabel}'s Voice`;
+        }
+        return '🔊 Listen Mode';
       case 'read-myself': return '📖 Reading Mode';
       case 'help-me-read': return '✨ Practice Mode';
       default: return '📖 Reading';

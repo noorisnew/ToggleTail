@@ -10,36 +10,62 @@ import manifest from '../../../assets/library/manifest.json';
 
 // Static imports for story content (required for Metro bundler)
 const storyContent: Record<string, () => Promise<StoryContent>> = {
-  // Animals (6 stories - Beginner to Advanced)
+  // Animals (9 stories - Beginner to Advanced)
   'animal-001.json': () => import('../../../assets/library/stories/animal-001.json'),
   'animal-002.json': () => import('../../../assets/library/stories/animal-002.json'),
   'animal-003.json': () => import('../../../assets/library/stories/animal-003.json'),
   'animal-004.json': () => import('../../../assets/library/stories/animal-004.json'),
   'animal-005.json': () => import('../../../assets/library/stories/animal-005.json'),
   'animal-006.json': () => import('../../../assets/library/stories/animal-006.json'),
-  // Adventure (3 stories - Beginner to Advanced)
+  'animal-007.json': () => import('../../../assets/library/stories/animal-007.json'),
+  'animal-008.json': () => import('../../../assets/library/stories/animal-008.json'),
+  'animal-009.json': () => import('../../../assets/library/stories/animal-009.json'),
+  // Adventure (9 stories - Beginner to Advanced)
   'adventure-001.json': () => import('../../../assets/library/stories/adventure-001.json'),
   'adventure-002.json': () => import('../../../assets/library/stories/adventure-002.json'),
   'adventure-003.json': () => import('../../../assets/library/stories/adventure-003.json'),
-  // Bedtime (4 stories - Beginner to Advanced)
+  'adventure-004.json': () => import('../../../assets/library/stories/adventure-004.json'),
+  'adventure-005.json': () => import('../../../assets/library/stories/adventure-005.json'),
+  'adventure-006.json': () => import('../../../assets/library/stories/adventure-006.json'),
+  'adventure-007.json': () => import('../../../assets/library/stories/adventure-007.json'),
+  'adventure-008.json': () => import('../../../assets/library/stories/adventure-008.json'),
+  'adventure-009.json': () => import('../../../assets/library/stories/adventure-009.json'),
+  // Bedtime (8 stories - Beginner to Advanced)
   'bedtime-001.json': () => import('../../../assets/library/stories/bedtime-001.json'),
   'bedtime-002.json': () => import('../../../assets/library/stories/bedtime-002.json'),
   'bedtime-003.json': () => import('../../../assets/library/stories/bedtime-003.json'),
   'bedtime-004.json': () => import('../../../assets/library/stories/bedtime-004.json'),
-  // Science (3 stories - Beginner to Advanced)
+  'bedtime-005.json': () => import('../../../assets/library/stories/bedtime-005.json'),
+  'bedtime-006.json': () => import('../../../assets/library/stories/bedtime-006.json'),
+  'bedtime-007.json': () => import('../../../assets/library/stories/bedtime-007.json'),
+  'bedtime-008.json': () => import('../../../assets/library/stories/bedtime-008.json'),
+  // Science (7 stories - Beginner to Advanced)
   'science-001.json': () => import('../../../assets/library/stories/science-001.json'),
   'science-002.json': () => import('../../../assets/library/stories/science-002.json'),
   'science-003.json': () => import('../../../assets/library/stories/science-003.json'),
-  // Values (4 stories - Beginner to Advanced)
+  'science-004.json': () => import('../../../assets/library/stories/science-004.json'),
+  'science-005.json': () => import('../../../assets/library/stories/science-005.json'),
+  'science-006.json': () => import('../../../assets/library/stories/science-006.json'),
+  'science-007.json': () => import('../../../assets/library/stories/science-007.json'),
+  // Values (8 stories - Beginner to Advanced)
   'values-001.json': () => import('../../../assets/library/stories/values-001.json'),
   'values-002.json': () => import('../../../assets/library/stories/values-002.json'),
   'values-003.json': () => import('../../../assets/library/stories/values-003.json'),
   'values-004.json': () => import('../../../assets/library/stories/values-004.json'),
-  // Fantasy (4 stories - Beginner to Advanced)
+  'values-005.json': () => import('../../../assets/library/stories/values-005.json'),
+  'values-006.json': () => import('../../../assets/library/stories/values-006.json'),
+  'values-007.json': () => import('../../../assets/library/stories/values-007.json'),
+  'values-008.json': () => import('../../../assets/library/stories/values-008.json'),
+  // Fantasy (9 stories - Beginner to Advanced)
   'fantasy-001.json': () => import('../../../assets/library/stories/fantasy-001.json'),
   'fantasy-002.json': () => import('../../../assets/library/stories/fantasy-002.json'),
   'fantasy-003.json': () => import('../../../assets/library/stories/fantasy-003.json'),
   'fantasy-004.json': () => import('../../../assets/library/stories/fantasy-004.json'),
+  'fantasy-005.json': () => import('../../../assets/library/stories/fantasy-005.json'),
+  'fantasy-006.json': () => import('../../../assets/library/stories/fantasy-006.json'),
+  'fantasy-007.json': () => import('../../../assets/library/stories/fantasy-007.json'),
+  'fantasy-008.json': () => import('../../../assets/library/stories/fantasy-008.json'),
+  'fantasy-009.json': () => import('../../../assets/library/stories/fantasy-009.json'),
 };
 
 // Types

@@ -2,20 +2,22 @@ const express = require('express');
 const router = express.Router();
 
 // ElevenLabs voice IDs (optimized for children's storytelling)
+// Each voice is distinct — no duplicates. All are pre-made, human-sounding voices
+// from ElevenLabs' public library with high naturalness ratings.
 const VOICES = {
-  'Rachel': 'EXAVITQu4vr4xnSDxMaL', // Warm, friendly female - great for stories
-  'Adam': '21m00Tcm4TlvDq8ikWAM',   // Clear male voice - calm narrator
-  'Sarah': 'EXAVITQu4vr4xnSDxMaL',  // Bright female voice
-  'Josh': 'TxGEqnHWrfWFTfGW9XjX',   // Young male - playful, fun
-  'Dorothy': 'ThT5KcBeYPX3keUQqHPh', // Warm grandmother - gentle, soothing
+  'Rachel':  'XrExE9yKIg1WjnnlVkGX', // Matilda  — warm, natural American female storyteller
+  'Dorothy': 'ThT5KcBeYPX3keUQqHPh', // Dorothy  — gentle, soothing older female voice
+  'Josh':    'TX3LPaxmHKxFdv7VOQHJ', // Liam     — natural, conversational American male
+  'Adam':    'onwK4e9ZLuTAKqWW03F9', // Daniel   — deep, articulate British male narrator
+  'Sarah':   'XB0fDUnXU5powFXDhCwa', // Charlotte — bright, natural British female
 };
 
 // Default voice for children's stories (warm and engaging)
 const DEFAULT_VOICE = 'Rachel';
 
-// Model selection: eleven_turbo_v2_5 is fastest with great quality
-// eleven_multilingual_v2 has best naturalness but slower
-const TTS_MODEL = 'eleven_turbo_v2_5';
+// eleven_multilingual_v2 — highest naturalness / most human-sounding quality
+// (eleven_turbo_v2_5 is faster but less natural for storytelling)
+const TTS_MODEL = 'eleven_multilingual_v2';
 
 /**
  * GET /api/tts/voices
@@ -153,7 +155,7 @@ router.post('/stream', async (req, res) => {
         },
         body: JSON.stringify({
           text,
-          model_id: 'eleven_monolingual_v1',
+          model_id: TTS_MODEL,
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,
