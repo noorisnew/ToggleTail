@@ -14,6 +14,7 @@
  */
 
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import { Platform } from 'react-native';
 import { generateAudio, isTextLengthValid } from '../data/api/elevenLabsApi';
 import {
     DEFAULT_VOICE_ID,
@@ -23,6 +24,68 @@ import {
     type ElevenLabsCacheEntry,
 } from '../data/storage/elevenLabsCacheStorage';
 import { normalizeError } from '../domain/services/errorService';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Web-specific playback (HTMLAudioElement + blob URL)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let currentWebAudio: HTMLAudioElement | null = null;
+let currentWebAudioUrl: string | null = null;
+
+function base64ToBlobUrl(base64: string, contentType = 'audio/mpeg'): string {
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: contentType });
+  return URL.createObjectURL(blob);
+}
+
+async function stopWebAudio(): Promise<void> {
+  if (currentWebAudio) {
+    try { currentWebAudio.pause(); } catch {}
+    currentWebAudio = null;
+  }
+  if (currentWebAudioUrl) {
+    try { URL.revokeObjectURL(currentWebAudioUrl); } catch {}
+    currentWebAudioUrl = null;
+  }
+}
+
+async function playElevenLabsAudioWeb(
+  pageText: string,
+  voiceId: string,
+  onComplete?: () => void
+): Promise<ElevenLabsPlaybackResponse> {
+  if (!isTextLengthValid(pageText)) {
+    return { success: false, error: 'Text too long', shouldFallback: true };
+  }
+  const response = await generateAudio({ text: pageText, voiceName: voiceId });
+  if (!response.success) {
+    return { success: false, error: response.error, shouldFallback: response.fallback ?? true };
+  }
+  await stopWebAudio();
+  const url = base64ToBlobUrl(response.audioBase64, response.contentType);
+  // Use window.Audio (HTMLAudioElement) — `Audio` from expo-av is shadowed in this file
+  const htmlAudio = new (window as any).Audio(url) as HTMLAudioElement;
+  currentWebAudio = htmlAudio;
+  currentWebAudioUrl = url;
+  htmlAudio.onended = () => {
+    onComplete?.();
+    stopWebAudio();
+  };
+  try {
+    await htmlAudio.play();
+    return { success: true, source: 'network', fileUri: url };
+  } catch (error) {
+    await stopWebAudio();
+    return {
+      success: false,
+      error: normalizeError(error),
+      shouldFallback: true,
+    };
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -196,6 +259,10 @@ export async function playElevenLabsAudio(
   voiceId: string = DEFAULT_VOICE_ID,
   onComplete?: () => void
 ): Promise<ElevenLabsPlaybackResponse> {
+  // Web: bypass file cache (FileSystem doesn't persist on web) and play via blob URL
+  if (Platform.OS === 'web') {
+    return playElevenLabsAudioWeb(pageText, voiceId, onComplete);
+  }
   try {
     // Validate text length
     if (!isTextLengthValid(pageText)) {
@@ -267,6 +334,10 @@ export async function playElevenLabsAudio(
  * Stop current ElevenLabs audio playback
  */
 export async function stopElevenLabsPlayback(): Promise<void> {
+  if (Platform.OS === 'web') {
+    await stopWebAudio();
+    return;
+  }
   try {
     if (currentSound) {
       await currentSound.stopAsync();
@@ -298,6 +369,8 @@ export async function precacheAudio(
   pageText: string,
   voiceId: string = DEFAULT_VOICE_ID
 ): Promise<void> {
+  // Web has no persistent file cache; precaching is a no-op
+  if (Platform.OS === 'web') return;
   try {
     // Skip if already cached
     if (await isCached(storyId, pageIndex, voiceId)) {

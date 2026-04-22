@@ -22,9 +22,13 @@ const getDevFallbackUrl = (): string => {
     // Web browser shares the host machine — localhost always works.
     return 'http://localhost:3001';
   }
+  if (Platform.OS === 'ios') {
+    // iOS simulator shares the host network stack — localhost works.
+    // Physical iOS devices need the host machine's LAN IP via EXPO_PUBLIC_API_URL.
+    return 'http://localhost:3001';
+  }
   // Android emulator maps 10.0.2.2 → host machine localhost.
-  // Physical devices (Android or iOS) need the host machine's LAN IP.
-  // Update this to match your machine if you're running on a real device.
+  // Physical Android devices need the host machine's LAN IP via EXPO_PUBLIC_API_URL.
   return 'http://10.0.2.2:3001';
 };
 
