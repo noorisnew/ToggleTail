@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "ToggleTail",
-    "slug": "ToggleTail",
+    "slug": "toggletail",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -68,9 +68,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "dd45654a-9952-40bc-b203-4f3ea355cfc1"
+        "projectId": "bdf424c1-84aa-440d-90cb-76d09e41c851"
       }
     },
-    "owner": "2noor4you"
+    "owner": "noorisnews-organization"
   }
 }

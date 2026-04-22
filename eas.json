@@ -26,13 +26,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.toggletail.com"
+        "EXPO_PUBLIC_API_URL": "https://toggletail-api-production.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.toggletail.com"
+        "EXPO_PUBLIC_API_URL": "https://toggletail-api-production.up.railway.app"
       }
     }
   },
