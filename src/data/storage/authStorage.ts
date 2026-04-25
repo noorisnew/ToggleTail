@@ -4,8 +4,11 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { seedStoriesFromLibrary } from '../seeder';
+import { autoApprovePreloadedStories } from '../../domain/services/storyApprovalService';
 import { normalizeError } from '../../domain/services/errorService';
 import {
+  DELETED_STORIES_KEY,
     EVENT_LOG_KEY,
     LIBRARY_CACHE_KEY,
     LIBRARY_CACHE_TIMESTAMP_KEY,
@@ -84,6 +87,7 @@ export async function signOut(): Promise<boolean> {
       ONBOARDING_KEY,
       PROFILE_KEY,
       STORIES_KEY,
+      DELETED_STORIES_KEY,
       NARRATION_MODE_KEY,
       EVENT_LOG_KEY,
       PARENT_RECORDINGS_KEY,
@@ -96,6 +100,11 @@ export async function signOut(): Promise<boolean> {
 
     // Remove all keys
     await AsyncStorage.multiRemove(keysToRemove);
+
+    // Immediately reseed bundled stories so the next account created on the
+    // same device/session still starts with the preloaded library available.
+    await seedStoriesFromLibrary();
+    await autoApprovePreloadedStories();
 
     return true;
   } catch (error) {

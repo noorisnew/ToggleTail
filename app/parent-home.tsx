@@ -127,8 +127,8 @@ export default function ParentHomeScreen() {
 
   const handleSignOut = () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out? This will clear all data including stories, recordings, and settings.',
+      'Sign Out & Delete Local Account',
+      'This app stores accounts only on this device. Signing out erases this child profile, stories, recordings, and settings here, and you will not be able to log back in to recover them.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

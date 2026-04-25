@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/design';
 
 const TEMP_NAME_KEY = 'onboarding_temp_name';
@@ -17,6 +17,9 @@ export default function PasswordSavedScreen() {
       if (storedName) setName(storedName);
     };
     loadName();
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
   }, []);
 
   return (
@@ -60,17 +63,9 @@ export default function PasswordSavedScreen() {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => router.replace('/onboarding/avatar')}
             activeOpacity={0.8}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => router.push('/onboarding/avatar')}
-            activeOpacity={0.8}
-            style={styles.nextButtonWrapper}
+            style={styles.singleActionButtonWrapper}
           >
             <LinearGradient
               colors={[Colors.primaryStart, Colors.primaryEnd]}
@@ -224,20 +219,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.backgroundLight,
     gap: Spacing.md,
   },
-  backButton: {
-    flex: 1,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.button,
-    borderWidth: 2,
-    borderColor: Colors.borderCard,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: Colors.textAccent,
-    fontSize: Typography.sizes.button,
-    fontWeight: Typography.weights.semibold,
-  },
-  nextButtonWrapper: {
+  singleActionButtonWrapper: {
     flex: 1,
   },
   nextButton: {

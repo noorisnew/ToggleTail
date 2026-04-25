@@ -71,8 +71,8 @@ export default function ProfileScreen() {
 
   const handleSignOut = () => {
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out? This will clear all data including stories, recordings, and settings.',
+      'Sign Out & Delete Local Account',
+      'This app stores accounts only on this device. Signing out erases this child profile, stories, recordings, and settings here, and you will not be able to log back in to recover them.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -174,7 +174,7 @@ export default function ProfileScreen() {
           <Text style={styles.signOutButtonIcon}>🚪</Text>
           <Text style={styles.signOutButtonMainText}>Sign Out & Reset App</Text>
         </TouchableOpacity>
-        <Text style={styles.signOutHint}>This will clear all data and restart onboarding</Text>
+        <Text style={styles.signOutHint}>This permanently deletes this device-only account and restarts onboarding.</Text>
       </View>
 
       {/* Avatar Picker Modal */}

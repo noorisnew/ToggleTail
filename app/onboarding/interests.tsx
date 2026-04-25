@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/design';
 import { AvatarType, InterestType, setProfile } from '../../src/data/storage/profileStorage';
 import { ONBOARDING_KEY } from '../../src/data/storage/storageKeys';
@@ -35,6 +35,9 @@ export default function InterestsScreen() {
       if (storedName) setName(storedName);
     };
     loadName();
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
   }, []);
 
   const toggleInterest = (interest: InterestType) => {
@@ -128,7 +131,11 @@ export default function InterestsScreen() {
           </View>
         </View>
 
-        <ScrollView style={styles.interestsScroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.interestsScroll}
+          contentContainerStyle={styles.interestsScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.interestsGrid}>
             {INTERESTS.map((interest) => (
               (() => {
@@ -158,7 +165,8 @@ export default function InterestsScreen() {
                       styles.interestLabel,
                       isSelected && styles.interestLabelSelected,
                       isDisabled && styles.interestLabelDisabled,
-                    ]}>
+                    ]}
+                    numberOfLines={3}>
                       {interest.name}
                     </Text>
                   </TouchableOpacity>
@@ -170,17 +178,9 @@ export default function InterestsScreen() {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
             onPress={handleComplete}
             activeOpacity={0.8}
-            style={styles.nextButtonWrapper}
+            style={styles.singleActionButtonWrapper}
             disabled={saving}
           >
             <LinearGradient
@@ -303,7 +303,10 @@ const styles = StyleSheet.create({
     color: Colors.textAccent,
   },
   interestsScroll: {
-    maxHeight: 280,
+    maxHeight: 360,
+  },
+  interestsScrollContent: {
+    paddingBottom: Spacing.sm,
   },
   interestsGrid: {
     flexDirection: 'row',
@@ -314,6 +317,7 @@ const styles = StyleSheet.create({
   interestCard: {
     position: 'relative',
     width: '48%',
+    minHeight: 136,
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.button,
@@ -349,7 +353,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xs,
   },
   interestLabel: {
-    fontSize: Typography.sizes.body,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: Typography.weights.semibold,
     color: Colors.textPrimary,
     textAlign: 'center',
@@ -368,20 +373,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: Spacing.md,
   },
-  backButton: {
-    flex: 1,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.button,
-    borderWidth: 2,
-    borderColor: Colors.borderCard,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: Colors.textAccent,
-    fontSize: Typography.sizes.button,
-    fontWeight: Typography.weights.semibold,
-  },
-  nextButtonWrapper: {
+  singleActionButtonWrapper: {
     flex: 1,
   },
   nextButton: {

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/design';
 import { AvatarType } from '../../src/data/storage/profileStorage';
 
@@ -35,13 +35,16 @@ export default function AvatarScreen() {
       if (storedName) setName(storedName);
     };
     loadName();
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
   }, []);
 
   const handleNext = async () => {
     if (selectedAvatar) {
       await AsyncStorage.setItem(TEMP_AVATAR_KEY, selectedAvatar);
     }
-    router.push('/onboarding/interests');
+    router.replace('/onboarding/interests');
   };
 
   return (
@@ -69,7 +72,11 @@ export default function AvatarScreen() {
           <Text style={styles.description}>Choose a fun avatar for their profile</Text>
         </View>
 
-        <ScrollView style={styles.avatarScroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.avatarScroll}
+          contentContainerStyle={styles.avatarScrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.avatarGrid}>
             {AVATARS.map((avatar) => (
               <TouchableOpacity
@@ -85,7 +92,8 @@ export default function AvatarScreen() {
                 <Text style={[
                   styles.avatarLabel,
                   selectedAvatar === avatar.name && styles.avatarLabelSelected,
-                ]}>
+                ]}
+                numberOfLines={2}>
                   {avatar.name}
                 </Text>
               </TouchableOpacity>
@@ -95,17 +103,9 @@ export default function AvatarScreen() {
 
         <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
             onPress={handleNext}
             activeOpacity={0.8}
-            style={styles.nextButtonWrapper}
+            style={styles.singleActionButtonWrapper}
           >
             <LinearGradient
               colors={selectedAvatar ? [Colors.primaryStart, Colors.primaryEnd] : ['#d1d5db', '#9ca3af']}
@@ -213,7 +213,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   avatarScroll: {
-    maxHeight: 280,
+    maxHeight: 340,
+  },
+  avatarScrollContent: {
+    paddingBottom: Spacing.sm,
   },
   avatarGrid: {
     flexDirection: 'row',
@@ -222,8 +225,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   avatarCard: {
-    width: '23%',
-    aspectRatio: 1,
+    width: '31%',
+    minHeight: 108,
     backgroundColor: Colors.cardBackground,
     borderRadius: BorderRadius.button,
     borderWidth: 2,
@@ -238,10 +241,11 @@ const styles = StyleSheet.create({
   },
   avatarEmoji: {
     fontSize: 32,
-    marginBottom: 2,
+    marginBottom: 6,
   },
   avatarLabel: {
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: Typography.weights.semibold,
     color: Colors.textPrimary,
     textAlign: 'center',
@@ -257,20 +261,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginTop: Spacing.md,
   },
-  backButton: {
-    flex: 1,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.button,
-    borderWidth: 2,
-    borderColor: Colors.borderCard,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: Colors.textAccent,
-    fontSize: Typography.sizes.button,
-    fontWeight: Typography.weights.semibold,
-  },
-  nextButtonWrapper: {
+  singleActionButtonWrapper: {
     flex: 1,
   },
   nextButton: {
