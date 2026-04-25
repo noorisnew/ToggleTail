@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -156,11 +156,20 @@ export default function StoryViewScreen() {
   const storyCompletedRef = useRef(false);
   const readStopLoggedRef = useRef(false);
 
-  // Load best available voice and narration mode
+  // Load best available voice and narration mode on mount
   useEffect(() => {
     loadBestVoice();
     loadNarrationSettings();
   }, []);
+
+  // Re-read narration settings whenever this screen comes into focus so that
+  // a voice change made in parent-settings is always picked up, even if this
+  // screen was already mounted in the navigation stack.
+  useFocusEffect(
+    useCallback(() => {
+      loadNarrationSettings();
+    }, [])
+  );
 
   // Check for parent recordings when story/page changes
   useEffect(() => {

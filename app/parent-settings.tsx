@@ -39,6 +39,10 @@ import {
     ScreenTimeData,
     updateSettings,
 } from '../src/data/storage/settingsStorage';
+import {
+    playElevenLabsAudio,
+    stopElevenLabsPlayback,
+} from '../src/services/elevenLabsPlaybackService';
 
 // Avatar options with emojis
 const AVATARS: { type: AvatarType; emoji: string }[] = [
@@ -156,20 +160,36 @@ export default function ParentSettingsScreen() {
     const preview = AI_VOICE_PREVIEWS[voiceId];
 
     try {
+      await stopElevenLabsPlayback();
       await Speech.stop();
+
       if (previewingVoiceId === voiceId) {
         setPreviewingVoiceId(null);
         return;
       }
 
       setPreviewingVoiceId(voiceId);
-      Speech.speak(preview.sample, {
-        rate: preview.rate,
-        pitch: preview.pitch,
-        onDone: () => setPreviewingVoiceId(null),
-        onStopped: () => setPreviewingVoiceId(null),
-        onError: () => setPreviewingVoiceId(null),
-      });
+
+      // Use the ElevenLabs voice so the preview matches what the child will hear.
+      // Cache key: 'voice_preview' / index 0 / voiceId — safe because voiceId is part of the key.
+      const result = await playElevenLabsAudio(
+        'voice_preview',
+        0,
+        preview.sample,
+        voiceId,
+        () => setPreviewingVoiceId(null),
+      );
+
+      if (!result.success) {
+        // ElevenLabs unavailable — fall back to device TTS
+        Speech.speak(preview.sample, {
+          rate: preview.rate,
+          pitch: preview.pitch,
+          onDone: () => setPreviewingVoiceId(null),
+          onStopped: () => setPreviewingVoiceId(null),
+          onError: () => setPreviewingVoiceId(null),
+        });
+      }
     } catch {
       setPreviewingVoiceId(null);
       Alert.alert('Preview unavailable', 'Unable to play the voice preview right now.');
