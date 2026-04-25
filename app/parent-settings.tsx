@@ -416,9 +416,9 @@ export default function ParentSettingsScreen() {
               <Text style={styles.sectionTitle}>Reading Level</Text>
               <Text style={styles.sectionSubtitle}>
                 Level {settings.readingLevel} - {
-                  settings.readingLevel === 1 ? 'Beginner (Ages 3-5)' :
-                  settings.readingLevel === 2 ? 'Intermediate (Ages 5-7)' :
-                  'Advanced (Ages 7-9)'
+                  settings.readingLevel === 1 ? 'Beginner (Ages 1-4)' :
+                  settings.readingLevel === 2 ? 'Intermediate (Ages 5-8)' :
+                  'Advanced (Ages 9-12)'
                 }
               </Text>
             </View>
@@ -720,6 +720,7 @@ export default function ParentSettingsScreen() {
                     style={styles.nameInput}
                     value={tempName}
                     onChangeText={setTempName}
+                    maxLength={30}
                     autoFocus
                     placeholder="Enter name"
                     placeholderTextColor="#9CA3AF"
@@ -727,8 +728,9 @@ export default function ParentSettingsScreen() {
                   <TouchableOpacity
                     style={styles.saveButton}
                     onPress={() => {
-                      if (tempName.trim()) {
-                        handleUpdateProfile({ name: tempName.trim() });
+                      const trimmedName = tempName.trim();
+                      if (trimmedName) {
+                        handleUpdateProfile({ name: trimmedName.slice(0, 30) });
                       }
                       setEditingName(false);
                     }}
@@ -753,7 +755,7 @@ export default function ParentSettingsScreen() {
               <View style={styles.ageSelectorCard}>
                 <Text style={styles.ageSelectorHint}>Choose the age that best matches your child's current reading stage.</Text>
                 <View style={styles.ageButtons}>
-                {[3, 4, 5, 6, 7, 8, 9].map((age) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((age) => (
                   <TouchableOpacity
                     key={age}
                     style={[

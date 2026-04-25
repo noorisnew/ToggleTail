@@ -20,6 +20,14 @@ export type ChildProfile = {
   favoriteStories?: string[];
 };
 
+function normalizeProfile(profile: ChildProfile): ChildProfile {
+  return {
+    ...profile,
+    name: profile.name.trim().slice(0, 30),
+    age: Math.max(1, Math.min(12, profile.age)),
+  };
+}
+
 function getTodayKey(): string {
   return new Date().toISOString().split('T')[0];
 }
@@ -52,7 +60,7 @@ export async function getProfile(): Promise<ChildProfile | null> {
     if (!json) {
       return null;
     }
-    return JSON.parse(json) as ChildProfile;
+    return normalizeProfile(JSON.parse(json) as ChildProfile);
   } catch (error) {
     console.error('getProfile:', normalizeError(error));
     return null;
@@ -64,7 +72,7 @@ export async function getProfile(): Promise<ChildProfile | null> {
  */
 export async function saveProfile(profile: ChildProfile): Promise<void> {
   try {
-    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(normalizeProfile(profile)));
   } catch (error) {
     console.error('saveProfile:', normalizeError(error));
     throw new Error(normalizeError(error));
@@ -99,7 +107,7 @@ export async function updateProfile(updates: Partial<ChildProfile>): Promise<Chi
     if (!current) {
       return null;
     }
-    const updated = { ...current, ...updates };
+    const updated = normalizeProfile({ ...current, ...updates } as ChildProfile);
     await setProfile(updated);
     return updated;
   } catch (error) {

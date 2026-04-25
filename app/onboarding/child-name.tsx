@@ -12,12 +12,17 @@ export default function ChildNameScreen() {
   const [name, setName] = useState('');
 
   const handleNext = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       Alert.alert('Error', 'Please enter the child\'s name.');
       return;
     }
+    if (trimmedName.length > 30) {
+      Alert.alert('Error', 'Child name must be 30 characters or fewer.');
+      return;
+    }
     // Store name temporarily for subsequent screens
-    await AsyncStorage.setItem(TEMP_NAME_KEY, name.trim());
+    await AsyncStorage.setItem(TEMP_NAME_KEY, trimmedName);
     router.push('/onboarding/age');
   };
 
@@ -61,9 +66,10 @@ export default function ChildNameScreen() {
               placeholderTextColor={Colors.textMuted}
               value={name}
               onChangeText={setName}
-              maxLength={50}
+              maxLength={30}
               autoFocus
             />
+            <Text style={styles.characterCount}>{name.trim().length}/30</Text>
           </View>
         </View>
 
@@ -210,6 +216,12 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderCard,
     color: Colors.textPrimary,
     textAlign: 'center',
+  },
+  characterCount: {
+    marginTop: Spacing.xs,
+    textAlign: 'right',
+    color: Colors.textMuted,
+    fontSize: Typography.sizes.small,
   },
   actions: {
     flexDirection: 'row',

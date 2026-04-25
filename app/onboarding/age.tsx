@@ -23,8 +23,8 @@ export default function AgeScreen() {
 
   const handleNext = async () => {
     const ageNum = parseInt(age, 10);
-    if (!age || isNaN(ageNum) || ageNum < 1 || ageNum > 17) {
-      Alert.alert('Error', 'Please enter a valid age (1-17).');
+    if (!age || isNaN(ageNum) || ageNum < 1 || ageNum > 12) {
+      Alert.alert('Error', 'Please enter a valid age (1-12).');
       return;
     }
     await AsyncStorage.setItem(TEMP_AGE_KEY, age);
@@ -64,7 +64,7 @@ export default function AgeScreen() {
           <Text style={styles.title}>How old is {name || 'your child'}?</Text>
           <Text style={styles.description}>This helps us recommend age-appropriate stories</Text>
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Age (1-17)</Text>
+            <Text style={styles.inputLabel}>Age (1-12)</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g., 7"

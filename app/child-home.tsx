@@ -78,15 +78,15 @@ const INTEREST_TO_GENRE: Record<InterestType, GenreId> = {
 type AgeRange = '3-5' | '5-7' | '7-9';
 
 const AGE_RANGES: { id: AgeRange; label: string; shortLabel: string }[] = [
-  { id: '3-5', label: 'Ages 3-5', shortLabel: 'Little Readers' },
-  { id: '5-7', label: 'Ages 5-7', shortLabel: 'Growing Readers' },
-  { id: '7-9', label: 'Ages 7-9', shortLabel: 'Big Readers' },
+  { id: '3-5', label: 'Ages 1-4', shortLabel: 'Little Readers' },
+  { id: '5-7', label: 'Ages 5-8', shortLabel: 'Growing Readers' },
+  { id: '7-9', label: 'Ages 9-12', shortLabel: 'Big Readers' },
 ];
 
 // Get age range for a given age
 function getAgeRange(age: number): AgeRange {
-  if (age <= 5) return '3-5';
-  if (age <= 7) return '5-7';
+  if (age <= 4) return '3-5';
+  if (age <= 8) return '5-7';
   return '7-9';
 }
 

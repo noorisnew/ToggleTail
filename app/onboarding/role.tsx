@@ -95,21 +95,6 @@ export default function RoleScreen() {
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => {
-              if (showChildMessage) {
-                setShowChildMessage(false);
-                setSelectedRole(null);
-              } else {
-                router.back();
-              }
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
-          </TouchableOpacity>
-
           {showChildMessage ? (
             <TouchableOpacity
               onPress={() => {
@@ -117,7 +102,7 @@ export default function RoleScreen() {
                 setSelectedRole(null);
               }}
               activeOpacity={0.8}
-              style={styles.nextButtonWrapper}
+              style={styles.singleActionButtonWrapper}
             >
               <LinearGradient
                 colors={[Colors.primaryStart, Colors.primaryEnd]}
@@ -129,21 +114,31 @@ export default function RoleScreen() {
               </LinearGradient>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity
-              onPress={handleNext}
-              activeOpacity={0.8}
-              style={styles.nextButtonWrapper}
-              disabled={!selectedRole}
-            >
-              <LinearGradient
-                colors={selectedRole ? [Colors.primaryStart, Colors.primaryEnd] : ['#d1d5db', '#9ca3af']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.nextButton}
+            <>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => router.back()}
+                activeOpacity={0.8}
               >
-                <Text style={styles.nextButtonText}>Next →</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <Text style={styles.backButtonText}>← Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleNext}
+                activeOpacity={0.8}
+                style={styles.nextButtonWrapper}
+                disabled={!selectedRole}
+              >
+                <LinearGradient
+                  colors={selectedRole ? [Colors.primaryStart, Colors.primaryEnd] : ['#d1d5db', '#9ca3af']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.nextButton}
+                >
+                  <Text style={styles.nextButtonText}>Next →</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
           )}
         </View>
       </View>
@@ -328,6 +323,9 @@ const styles = StyleSheet.create({
     fontWeight: Typography.weights.semibold,
   },
   nextButtonWrapper: {
+    flex: 1,
+  },
+  singleActionButtonWrapper: {
     flex: 1,
   },
   nextButton: {

@@ -46,8 +46,11 @@ router.post('/', requireAuth, async (req, res) => {
     if (!name || age === undefined) {
       return res.status(400).json({ error: 'Name and age are required' });
     }
-    if (age < 2 || age > 12) {
-      return res.status(400).json({ error: 'Age must be between 2 and 12' });
+    if (age < 1 || age > 12) {
+      return res.status(400).json({ error: 'Age must be between 1 and 12' });
+    }
+    if (name.trim().length > 30) {
+      return res.status(400).json({ error: 'Name must be 30 characters or fewer' });
     }
 
     const child = await prisma.child.create({
@@ -114,8 +117,11 @@ router.patch('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Child not found' });
     }
 
-    if (age !== undefined && (age < 2 || age > 12)) {
-      return res.status(400).json({ error: 'Age must be between 2 and 12' });
+    if (age !== undefined && (age < 1 || age > 12)) {
+      return res.status(400).json({ error: 'Age must be between 1 and 12' });
+    }
+    if (name !== undefined && name.trim().length > 30) {
+      return res.status(400).json({ error: 'Name must be 30 characters or fewer' });
     }
 
     const newAge     = age !== undefined ? age : existing.age;
