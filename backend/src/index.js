@@ -41,6 +41,26 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(requestLogger);
 
+// ─── Root route ───────────────────────────────────────────────────────────────
+// Friendly landing response so hitting the bare domain doesn't look broken.
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    name: 'ToggleTail API',
+    status: 'ok',
+    endpoints: [
+      '/api/health',
+      '/api/stories',
+      '/api/tts',
+      '/api/analytics',
+      '/api/auth',
+      '/api/children',
+      '/api/approvals',
+      '/api/sync',
+    ],
+  });
+});
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 // Story generation and TTS are stateless — work without a DB connection.
 app.use('/api/stories',   storyRoutes);
