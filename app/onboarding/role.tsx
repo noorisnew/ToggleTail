@@ -112,7 +112,10 @@ export default function RoleScreen() {
 
           {showChildMessage ? (
             <TouchableOpacity
-              onPress={() => router.push('/parent-gate')}
+              onPress={() => {
+                setShowChildMessage(false);
+                setSelectedRole(null);
+              }}
               activeOpacity={0.8}
               style={styles.nextButtonWrapper}
             >

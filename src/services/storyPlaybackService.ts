@@ -197,7 +197,8 @@ export async function playStoryPage(
   ttsConfig: TTSConfig,
   callbacks: PlaybackCallbacks,
   voiceId?: string,
-  clonedVoiceId?: string
+  clonedVoiceId?: string,
+  narratorSlot?: string
 ): Promise<PlaybackResult> {
   // Resolve which source to use
   const source = resolveNarrationSource(narrationMode, hasParentRecording);
@@ -208,7 +209,7 @@ export async function playStoryPage(
 
     const success = await playPageRecording(storyId, pageIndex, () => {
       callbacks.onParentComplete?.();
-    });
+    }, undefined, narratorSlot as any);
 
     if (success) {
       return { source: 'parent' };

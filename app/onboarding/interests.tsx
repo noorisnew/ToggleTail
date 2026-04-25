@@ -10,6 +10,7 @@ import { ONBOARDING_KEY } from '../../src/data/storage/storageKeys';
 const TEMP_NAME_KEY = 'onboarding_temp_name';
 const TEMP_AGE_KEY = 'onboarding_temp_age';
 const TEMP_AVATAR_KEY = 'onboarding_temp_avatar';
+const MAX_INTEREST_SELECTIONS = 3;
 
 const INTERESTS: { name: InterestType; emoji: string; bgColor: string }[] = [
   { name: 'Super Heroes', emoji: '🦸‍♀️', bgColor: '#fce7f3' },
@@ -37,11 +38,17 @@ export default function InterestsScreen() {
   }, []);
 
   const toggleInterest = (interest: InterestType) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((i) => i !== interest)
-        : [...prev, interest]
-    );
+    setSelectedInterests((prev) => {
+      if (prev.includes(interest)) {
+        return prev.filter((i) => i !== interest);
+      }
+
+      if (prev.length >= MAX_INTEREST_SELECTIONS) {
+        return prev;
+      }
+
+      return [...prev, interest];
+    });
   };
 
   const handleComplete = async () => {
@@ -115,30 +122,48 @@ export default function InterestsScreen() {
         <View style={styles.content}>
           <Text style={styles.emoji}>💗</Text>
           <Text style={styles.title}>What does {name || 'your child'} love to read about?</Text>
-          <Text style={styles.description}>We'll suggest stories they'll enjoy</Text>
+          <Text style={styles.description}>Choose up to 3 categories and we'll suggest stories they'll enjoy</Text>
+          <View style={styles.selectionSummary}>
+            <Text style={styles.selectionCounter}>{selectedInterests.length}/{MAX_INTEREST_SELECTIONS} selected</Text>
+          </View>
         </View>
 
         <ScrollView style={styles.interestsScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.interestsGrid}>
             {INTERESTS.map((interest) => (
-              <TouchableOpacity
-                key={interest.name}
-                style={[
-                  styles.interestCard,
-                  { backgroundColor: interest.bgColor },
-                  selectedInterests.includes(interest.name) && styles.interestCardSelected,
-                ]}
-                onPress={() => toggleInterest(interest.name)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.interestEmoji}>{interest.emoji}</Text>
-                <Text style={[
-                  styles.interestLabel,
-                  selectedInterests.includes(interest.name) && styles.interestLabelSelected,
-                ]}>
-                  {interest.name}
-                </Text>
-              </TouchableOpacity>
+              (() => {
+                const isSelected = selectedInterests.includes(interest.name);
+                const isDisabled = !isSelected && selectedInterests.length >= MAX_INTEREST_SELECTIONS;
+
+                return (
+                  <TouchableOpacity
+                    key={interest.name}
+                    style={[
+                      styles.interestCard,
+                      { backgroundColor: interest.bgColor },
+                      isSelected && styles.interestCardSelected,
+                      isDisabled && styles.interestCardDisabled,
+                    ]}
+                    onPress={() => toggleInterest(interest.name)}
+                    activeOpacity={0.7}
+                    disabled={isDisabled}
+                  >
+                    {isSelected && (
+                      <View style={styles.selectionBadge}>
+                        <Text style={styles.selectionBadgeText}>✓</Text>
+                      </View>
+                    )}
+                    <Text style={styles.interestEmoji}>{interest.emoji}</Text>
+                    <Text style={[
+                      styles.interestLabel,
+                      isSelected && styles.interestLabelSelected,
+                      isDisabled && styles.interestLabelDisabled,
+                    ]}>
+                      {interest.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()
             ))}
           </View>
         </ScrollView>
@@ -265,6 +290,18 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
   },
+  selectionSummary: {
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: 9999,
+    backgroundColor: '#f3e8ff',
+  },
+  selectionCounter: {
+    fontSize: Typography.sizes.small,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.textAccent,
+  },
   interestsScroll: {
     maxHeight: 280,
   },
@@ -275,6 +312,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   interestCard: {
+    position: 'relative',
     width: '48%',
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.md,
@@ -286,6 +324,25 @@ const styles = StyleSheet.create({
   },
   interestCardSelected: {
     borderColor: Colors.primaryStart,
+  },
+  interestCardDisabled: {
+    opacity: 0.45,
+  },
+  selectionBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primaryStart,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectionBadgeText: {
+    color: Colors.textLight,
+    fontSize: Typography.sizes.small,
+    fontWeight: Typography.weights.bold,
   },
   interestEmoji: {
     fontSize: 36,
@@ -299,6 +356,9 @@ const styles = StyleSheet.create({
   },
   interestLabelSelected: {
     color: Colors.primaryStart,
+  },
+  interestLabelDisabled: {
+    color: Colors.textSecondary,
   },
   actions: {
     flexDirection: 'row',

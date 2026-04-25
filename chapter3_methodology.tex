@@ -1,0 +1,169 @@
+% ============================================================
+% CHAPTER 3: METHODOLOGY
+% ToggleTails – AI and Human Narration in Child-Centered
+% Storytelling Applications
+% ============================================================
+
+\chapter{Methodology}
+
+\section{Research Design}
+
+This project adopts a \textbf{Waterfall Software Development Methodology} structured across four sequential phases: requirements and design, implementation, testing, and evaluation. The Waterfall model was selected because the project scope and deliverables were well-defined from the outset, making iterative redefinition unnecessary. Each phase produces a concrete artefact—design documents, a functional application, test observations, and an evaluative report—before the next phase begins. This linearity also aligns with the constraints of a single-semester capstone timeline under weekly supervisor review.
+
+The research combines \textbf{applied software engineering} with \textbf{qualitative usability observation}. The engineering component produces a working cross-platform mobile application; the observational component assesses whether the application's dual-narration model (human versus AI narration) produces a measurable difference in child engagement during story sessions. All data collection involves human participants and was conducted under informed consent from the parents of participating children.
+
+\section{Development Phases}
+
+\subsection{Phase I: Requirements and Design}
+
+The first phase encompassed requirements elicitation, system architecture design, and interface prototyping. Requirements were gathered through a review of existing child-literacy applications and academic literature on narration-assisted reading (see Chapter 2), and through consultation with the project supervisor.
+
+Core functional requirements established at this stage included:
+\begin{itemize}
+    \item A pre-loaded story library of at least 50 stories spanning multiple genres and reading levels, shipped with the application and requiring no network connection to access.
+    \item A parent-controlled narration pipeline supporting two modes: (1) a recorded human voice provided by the parent, and (2) an AI-generated voice powered by ElevenLabs neural text-to-speech, with on-device synthesis via \texttt{expo-speech} as a network-independent fallback.
+    \item A role-based access model separating the parent configuration interface from the child reading interface, enforced by a PIN-based authentication gate.
+    \item An approval workflow enabling parents to review AI-generated stories before they become visible to the child.
+    \item Offline-first operation: all core reading functionality must be available without an active internet connection.
+\end{itemize}
+
+Non-functional requirements included cross-platform support for both iOS and Android, compliance with WCAG accessibility guidelines for colour contrast and touch target size, and response latency under 300\,ms for all local operations.
+
+Interface prototypes were produced using \textbf{Figma}, covering the child home screen (genre tabs, story cards, avatar), the story reading view (page navigation, narration controls), the parent dashboard (narration mode toggle, story approval list, voice selection), and the narration recording flow. Prototypes were reviewed iteratively with the project supervisor before implementation began.
+
+\subsection{Phase II: Implementation}
+
+The application was implemented as a cross-platform mobile application using \textbf{React Native} with \textbf{Expo SDK 54} and \textbf{Expo Router} for file-based navigation. TypeScript was used throughout to enforce static type safety. The backend service was implemented in \textbf{Node.js} with \textbf{Express}, connected to a \textbf{MySQL} database via the \textbf{Prisma} ORM, and accessed via a REST API. The following subsections describe each functional module.
+
+\subsubsection{Story Library Module}
+
+The story library ships 52 curated, public-domain story JSON files bundled inside the application assets, organised across six genres: Animals, Adventure, Bedtime, Science, Values, and Fantasy. Each genre contains between seven and nine stories spanning three reading levels—Beginner, Intermediate, and Advanced—as defined in a central \texttt{manifest.json} file. The \texttt{storyLibraryService.ts} module provides typed API functions for genre-filtered retrieval, paginated listing, reading-level filtering, and lazy full-content loading. At first launch, the \texttt{PreloadedSeeder} module seeds all 52 stories from the manifest into local AsyncStorage and marks them as approved by default, making them immediately visible in the child interface without any parent action.
+
+Story metadata (title, genre, reading level, age range, estimated duration, preview text) is read synchronously from the in-memory manifest; full story text (pages array, word count, author) is loaded on demand via dynamic import to avoid unnecessary memory allocation.
+
+\subsubsection{Narration and Audio Playback Module}
+
+ToggleTails implements a dual-narration pipeline controlled by the parent. The narration mode is persisted in AsyncStorage as a global setting and applied on every story reading session.
+
+\textbf{Human Narration Mode.} The parent records their own voice reading a story using the in-app recorder (\texttt{record-narration.tsx}), which uses \texttt{expo-av} for both audio capture and playback. Recordings are stored locally as audio files referenced by story ID. During a child's reading session, the stored recording is retrieved and played back via \texttt{expo-av}. As an optional enhancement, upon saving a recording the application calls the \texttt{cloneVoice()} function from the ElevenLabs service layer, which submits the audio sample to the ElevenLabs Voice Cloning API. If successful, the resulting voice ID is persisted and made available for AI narration sessions that wish to approximate the parent's vocal characteristics.
+
+\textbf{AI Narration Mode.} When no parent recording is available, or when the parent has selected AI narration, the application requests speech synthesis from the \textbf{ElevenLabs Text-to-Speech API}, using either the cloned voice ID (if available) or a default neural voice. The synthesised audio is returned as a stream and played via \texttt{expo-av}. If the device is offline or the ElevenLabs request fails, the application falls back transparently to on-device synthesis via \texttt{expo-speech}, ensuring narration is always available.
+
+Both modes are coordinated by the \texttt{story-view.tsx} screen, which detects the current narration mode, the availability of a recording, network status, and the availability of ElevenLabs credentials before selecting the appropriate playback path.
+
+\subsubsection{AI Story Generation Module}
+
+Parents may request AI-generated stories tailored to a child's name, age, reading level, and interests. Generation requests are submitted to the backend REST API (\texttt{/api/stories/generate}), which calls \textbf{OpenAI GPT-4o-mini} with a structured prompt encoding the child profile. The generated story is returned as structured JSON (title, body text, themes) and presented to the parent for review before it is saved. AI-generated stories are stored in AsyncStorage with \texttt{approved: false} by default and must be approved by the parent before they become visible to the child.
+
+\subsubsection{Parent Authentication and Access Control Module}
+
+The parent interface is protected by a PIN-based gate implemented in \texttt{parentGateService.ts}. The PIN is hashed using \texttt{bcryptjs} and stored in \texttt{expo-secure-store}, which uses platform-native secure enclave storage (iOS Keychain / Android Keystore). Authentication failures are rate-limited and trigger a timed lockout after repeated incorrect attempts. Parent setup also includes child profile configuration (name, age, avatar, reading level, interests) and narration settings (mode selection, ElevenLabs voice selection).
+
+\subsubsection{Story Approval Workflow}
+
+The \texttt{StoryApprovalService} (located in \texttt{src/domain/services/storyApprovalService.ts}) manages the visibility contract between the parent and child interfaces. Pre-loaded stories are auto-approved on first seed. AI-generated stories carry \texttt{approved: false} until the parent explicitly approves them via the parent dashboard. The child home screen queries only approved stories, so unapproved content is structurally inaccessible from the child interface regardless of UI state.
+
+\subsubsection{Help Me Read Module}
+
+The Help Me Read feature provides interactive reading support within the story view, using speech recognition to listen to the child read aloud and provide feedback. This feature requires a native build produced via \textbf{Expo Application Services (EAS)} and is gracefully disabled in Expo Go with an informative message. In the Expo Go development environment, users are prompted to use an EAS build to access speech recognition functionality.
+
+\subsubsection{Local Data Persistence}
+
+All user data—child profiles, story content, narration settings, approval states, and reading progress—is stored locally on the device using \texttt{@react-native-async-storage/async-storage}. No personal data is transmitted to any external server. The backend API is used only for story generation requests and ElevenLabs narration synthesis, both of which are optional features that degrade gracefully when unavailable.
+
+\subsection{Phase III: Testing}
+
+Testing was conducted across two levels: automated integration validation and structured observational usability sessions with child and parent participants.
+
+\subsubsection{Technical Validation}
+
+Core service modules—including \texttt{storyLibraryService.ts}, \texttt{storyApprovalService.ts}, \texttt{parentGateService.ts}, and the \texttt{PreloadedSeeder}—were validated by manually exercising their public API functions with representative inputs and verifying output structure against expected types. Edge cases tested included: offline fallback activation when network is unavailable, story seeding idempotency across repeated first-run simulations, PIN rate-limiting and lockout behaviour, and ElevenLabs fallback to \texttt{expo-speech} under simulated network failure.
+
+The application was run in the Expo Go development client on physical iOS and Android devices throughout development, with component-level inspection conducted via the React Native debugger.
+
+\subsubsection{Observational Usability Study}
+
+A small-scale observational study was conducted with \textbf{three children aged 5 to 7} and \textbf{three parents} recruited from the researcher's immediate network. The study was conducted in home environments to reflect authentic usage conditions.
+
+Each child participated in two story reading sessions. In the first session, the child listened to a story narrated by the AI voice (ElevenLabs synthesis). In the second session, the child listened to the same story narrated by their parent's recorded voice played back through the application. Sessions were not timed; children were permitted to proceed at their own pace. Parents were present throughout both sessions.
+
+\textbf{Behavioural indicators} observed and noted by the researcher during each session included: attention maintenance (sustained focus on the screen), page-turn engagement (child initiating page advances independently), verbal responses (spontaneous comments or questions about the story), and session completion (whether the child completed the story without disengaging).
+
+Following the sessions, parents completed a short open-ended questionnaire covering their impressions of the narration quality in each mode, any observed differences in child engagement, and overall satisfaction with the application interface.
+
+Observational notes and questionnaire responses were analysed thematically to identify patterns across the three parent--child pairs, acknowledging that the sample size precludes statistical generalisation.
+
+\subsection{Phase IV: Evaluation}
+
+The evaluation phase synthesised findings from the technical validation and the observational study to assess the degree to which ToggleTails met its stated requirements. Evaluation criteria included: (1) functional completeness against the requirements established in Phase I; (2) offline reliability across core reading and human-narration playback features; (3) observed child engagement patterns across narration modes; and (4) parent usability feedback on the configuration and approval workflow. Findings from this phase are presented in Chapters 4 and 5.
+
+\section{System Architecture Overview}
+
+ToggleTails follows a \textbf{local-first, layered architecture} organised into four tiers:
+
+\begin{enumerate}
+    \item \textbf{Presentation Layer.} React Native screens managed by Expo Router. Screens include \texttt{child-home.tsx} (genre tabs, story grid, avatar), \texttt{story-view.tsx} (reading interface with narration controls), \texttt{parent-home.tsx} (dashboard), \texttt{record-narration.tsx} (audio recording), and \texttt{story-create.tsx} (AI story generation).
+    \item \textbf{Domain Layer.} Business logic services including \texttt{storyApprovalService.ts}, \texttt{parentGateService.ts}, \texttt{storyCreationService.ts}, and \texttt{narrationService.ts}. This layer is framework-agnostic and does not import React components.
+    \item \textbf{Data Layer.} Storage adapters (\texttt{AsyncStorage}, \texttt{SecureStore}), the \texttt{storyLibraryService.ts} manifest reader, the \texttt{PreloadedSeeder}, and the \texttt{storyApi.ts} module that mediates between preloaded content, cache, and the backend REST API.
+    \item \textbf{Backend Service (Optional).} A Node.js/Express server with a Prisma/MySQL data layer, accessed for AI story generation (\texttt{/api/stories/generate}) and story suggestions (\texttt{/api/stories/suggest}). The application is fully functional without this service; its absence disables AI generation while leaving all library and human-narration features intact.
+\end{enumerate}
+
+\section{Tools and Technologies}
+
+Table~\ref{tab:tools} summarises the tools, frameworks, and services used in the development of ToggleTails.
+
+\begin{table}[h!]
+\centering
+\caption{Development Tools and Technologies}
+\label{tab:tools}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{|l|l|X|}
+\hline
+\textbf{Category} & \textbf{Tool / Service} & \textbf{Purpose} \\
+\hline
+Frontend Framework & React Native (Expo SDK 54) & Cross-platform mobile application \\
+Navigation & Expo Router & File-based screen navigation \\
+Language & TypeScript & Static type safety across all modules \\
+Audio & expo-av & Voice recording and audio playback \\
+TTS (on-device) & expo-speech & Network-independent text-to-speech fallback \\
+TTS (neural) & ElevenLabs API & High-quality AI narration and voice cloning \\
+AI Generation & OpenAI GPT-4o-mini & AI story text generation \\
+Local Storage & AsyncStorage & Stories, profiles, settings, approval state \\
+Secure Storage & expo-secure-store & Parent PIN (bcrypt hash) \\
+Backend & Node.js / Express & REST API for story generation \\
+ORM / Database & Prisma / MySQL & Backend data persistence \\
+Build \& Deployment & Expo Application Services (EAS) & Native iOS and Android builds \\
+Design & Figma & UI wireframes and prototype \\
+Version Control & Git / GitHub & Source code management \\
+Documentation & Google Drive & Project documentation and supervisor reports \\
+\hline
+\end{tabularx}
+\end{table}
+
+\section{Risk Management}
+
+Table~\ref{tab:risks} documents anticipated project risks, their likelihood, potential impact, and the mitigation strategies employed.
+
+\begin{table}[h!]
+\centering
+\caption{Risk Register}
+\label{tab:risks}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{|X|c|c|X|}
+\hline
+\textbf{Risk} & \textbf{Likelihood} & \textbf{Impact} & \textbf{Mitigation} \\
+\hline
+ElevenLabs API unavailability or quota exhaustion & Medium & Medium & On-device \texttt{expo-speech} fallback implemented as a transparent alternative \\
+Backend service unavailability & Medium & Low & Application operates fully offline; backend is optional for core features \\
+React Native / Expo SDK compatibility issues & Medium & High & Pinned dependency versions; Expo SDK 54 used throughout \\
+Child participant recruitment constraints & High & Medium & Study scaled to available participants; observational methodology adopted \\
+Scope creep beyond available development time & Medium & High & Waterfall phasing with fixed deliverables per phase; supervisor review gates \\
+Data privacy for child participants & Low & High & No personal data transmitted externally; all data stored locally on device; informed parental consent obtained \\
+Speech recognition unavailability in Expo Go & High & Low & Help Me Read feature gracefully disabled with informative message; EAS native build required \\
+\hline
+\end{tabularx}
+\end{table}
+
+\section{Ethical Considerations}
+
+All observational sessions involving child participants were conducted with the written informed consent of each child's parent or legal guardian. Children were not asked to perform tasks beyond comfortable reading activities and were free to disengage at any time. No audio, video, or personally identifiable data was collected from participants; researcher notes recorded only behavioural observations using pre-defined indicators. Story content used in sessions was selected from the application's pre-loaded library of public-domain texts and was age-appropriate for all participants. No data was stored externally or transmitted beyond the local device.

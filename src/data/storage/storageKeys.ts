@@ -21,5 +21,8 @@ export const PARENT_RECORDINGS_KEY = 'parent_recordings_v1';
 // Preloaded story seeding
 export const PRELOADED_SEEDED_VERSION_KEY = 'preloaded_seeded_version_v1';
 
+// Soft-deleted stories
+export const DELETED_STORIES_KEY = 'deleted_stories_v1';
+
 // ElevenLabs AI narration cache
 export const ELEVENLABS_CACHE_KEY = 'elevenlabs_cache_v1';

@@ -21,6 +21,7 @@ import {
     deletePageRecording,
     getPageRecording,
     NarrationRecording,
+    NarratorSlot,
     savePageRecording,
 } from '../data/storage/narrationRecordingStorage';
 import { normalizeError } from '../domain/services/errorService';
@@ -187,7 +188,8 @@ export async function saveRecording(
   pageIndex: number,
   pageCount: number,
   tempUri: string,
-  durationMs: number
+  durationMs: number,
+  narratorSlot?: NarratorSlot
 ): Promise<NarrationRecording | null> {
   try {
     // Create a permanent directory for recordings
@@ -214,7 +216,8 @@ export async function saveRecording(
       pageIndex,
       pageCount,
       permanentUri,
-      durationMs
+      durationMs,
+      narratorSlot
     );
     
     return recording;
@@ -271,10 +274,11 @@ export async function playPageRecording(
   storyId: string,
   pageIndex: number,
   onComplete?: () => void,
-  onStatusUpdate?: (status: AVPlaybackStatus) => void
+  onStatusUpdate?: (status: AVPlaybackStatus) => void,
+  narratorSlot?: NarratorSlot
 ): Promise<boolean> {
   try {
-    const recording = await getPageRecording(storyId, pageIndex);
+    const recording = await getPageRecording(storyId, pageIndex, narratorSlot);
     if (!recording) {
       console.log('No recording found for page', pageIndex);
       return false;

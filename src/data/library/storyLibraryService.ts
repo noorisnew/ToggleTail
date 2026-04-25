@@ -311,87 +311,35 @@ export async function getStoryContent(storyId: string): Promise<StoryContent | u
   
   try {
     const module = await loader();
-    // Handle both direct content and module default export
-    const content = (module as any).default || module;
+    // Metro bundler dynamic imports for JSON return the data as the default export
+    const content = (module as any).default ?? module;
     return content as StoryContent;
   } catch (error) {
-    console.error(`Failed to load story content: ${storyId}`, error);
+    console.warn(`Failed to load story content for ${storyId}:`, error);
     return undefined;
   }
 }
 
 /**
- * Get a complete story with metadata and content
- * 
+ * Get a story with full content loaded
+ *
+ * Combines metadata from the manifest with the full text content from the
+ * bundled JSON file.  Used by storyApi.ts to serve preloaded stories in
+ * LibraryStory format when the backend is unavailable or the story is offline.
+ *
  * @param storyId - The story ID to load
- * @returns The complete story, or undefined if not found
+ * @returns Story metadata with fullContent attached, or undefined if not found
  */
 export async function getFullStory(storyId: string): Promise<LibraryStory | undefined> {
   const metadata = getStoryMetadata(storyId);
   if (!metadata) {
     return undefined;
   }
-  
+
   const fullContent = await getStoryContent(storyId);
-  
+
   return {
     ...metadata,
     fullContent,
   };
-}
-
-/**
- * Search stories by title (case-insensitive)
- * 
- * @param query - Search query
- * @param page - Page number (1-indexed, default: 1)
- * @param pageSize - Number of items per page (default: 20)
- * @returns Paginated result with matching stories
- */
-export function searchStories(
-  query: string,
-  page: number = 1,
-  pageSize: number = DEFAULT_PAGE_SIZE
-): PaginatedResult<StoryMetadata> {
-  const normalizedQuery = query.toLowerCase().trim();
-  
-  const matchingStories = manifest.stories.filter((s) =>
-    s.title.toLowerCase().includes(normalizedQuery) ||
-    s.preview.toLowerCase().includes(normalizedQuery)
-  ) as StoryMetadata[];
-  
-  const total = matchingStories.length;
-  const normalizedPage = Math.max(1, page);
-  const startIndex = (normalizedPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  
-  const items = matchingStories.slice(startIndex, endIndex);
-  
-  return {
-    items,
-    page: normalizedPage,
-    pageSize,
-    total,
-    hasNextPage: endIndex < total,
-  };
-}
-
-/**
- * Get story count by genre
- */
-export function getStoryCountByGenre(): Record<GenreId, number> {
-  const counts: Record<string, number> = {};
-  
-  for (const genre of manifest.genres) {
-    counts[genre.id] = manifest.stories.filter((s) => s.genre === genre.id).length;
-  }
-  
-  return counts as Record<GenreId, number>;
-}
-
-/**
- * Get total number of stories in the library
- */
-export function getTotalStoryCount(): number {
-  return manifest.stories.length;
 }

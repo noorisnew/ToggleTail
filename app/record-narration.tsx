@@ -15,8 +15,14 @@ import {
 } from 'react-native';
 import { cloneVoice } from '../src/data/api/elevenLabsApi';
 import { getStoryById } from '../src/data/api/storyApi';
-import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
-import { getNarrationSettings, saveNarrationSettings } from '../src/data/storage/narrationStorage';
+import {
+    finalizeStoryRecording,
+    getPageRecording,
+    getStoryRecordingsForNarrator,
+    NarratorSlot,
+    StoryRecordings,
+} from '../src/data/storage/narrationRecordingStorage';
+import { getNarrationSettings, ParentVoiceLabel, saveNarrationSettings } from '../src/data/storage/narrationStorage';
 import { getStories } from '../src/data/storage/storyStorage';
 import { normalizeError } from '../src/domain/services/errorService';
 import {
@@ -34,7 +40,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function RecordNarrationScreen() {
   const router = useRouter();
-  const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
+  const { id, source, narratorSlot } = useLocalSearchParams<{ id: string; source?: string; narratorSlot?: NarratorSlot }>();
   
   const [story, setStory] = useState<{ id: string; title: string; text: string } | null>(null);
   const [pages, setPages] = useState<string[]>([]);
@@ -49,6 +55,7 @@ export default function RecordNarrationScreen() {
   const [existingRecording, setExistingRecording] = useState<{ uri: string; durationMs: number } | null>(null);
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
   const [isExpoGo, setIsExpoGo] = useState(false);
+  const [selectedNarratorSlot, setSelectedNarratorSlot] = useState<NarratorSlot>('Mom');
   
   // Animation
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -71,8 +78,9 @@ export default function RecordNarrationScreen() {
   useEffect(() => {
     if (story) {
       loadExistingRecording();
+      loadNarratorRecordings();
     }
-  }, [currentPage, story]);
+  }, [currentPage, story, selectedNarratorSlot]);
 
   // Pulse animation when recording
   useEffect(() => {
@@ -98,6 +106,14 @@ export default function RecordNarrationScreen() {
 
   const loadStory = async () => {
     try {
+      const settings = await getNarrationSettings();
+      const preferredSlot = narratorSlot === 'Dad' || narratorSlot === 'Mom'
+        ? narratorSlot
+        : settings.parentVoiceLabel === 'Dad'
+        ? 'Dad'
+        : 'Mom';
+      setSelectedNarratorSlot(preferredSlot);
+
       if (source === 'library') {
         const result = await getStoryById(id || '');
         if (result.success && result.story) {
@@ -119,9 +135,6 @@ export default function RecordNarrationScreen() {
         }
       }
       
-      // Load existing recordings
-      const recordings = await getStoryRecordings(id || '');
-      setStoryRecordings(recordings);
     } catch (error) {
       console.error('loadStory error:', normalizeError(error));
       Alert.alert('Error', 'Could not load story');
@@ -130,10 +143,20 @@ export default function RecordNarrationScreen() {
     }
   };
 
+  const loadNarratorRecordings = async () => {
+    if (!story) return;
+    try {
+      const recordings = await getStoryRecordingsForNarrator(story.id, selectedNarratorSlot);
+      setStoryRecordings(recordings);
+    } catch (error) {
+      console.error('loadNarratorRecordings error:', normalizeError(error));
+    }
+  };
+
   const loadExistingRecording = async () => {
     if (!story) return;
     try {
-      const recording = await getPageRecording(story.id, currentPage);
+      const recording = await getPageRecording(story.id, currentPage, selectedNarratorSlot);
       if (recording) {
         setExistingRecording({ uri: recording.fileUri, durationMs: recording.durationMs });
       } else {
@@ -233,7 +256,8 @@ export default function RecordNarrationScreen() {
       currentPage,
       pages.length,
       tempRecording.uri,
-      tempRecording.durationMs
+      tempRecording.durationMs,
+      selectedNarratorSlot
     );
     
     if (saved) {
@@ -241,7 +265,7 @@ export default function RecordNarrationScreen() {
       setTempRecording(null);
 
       // Refresh story recordings
-      const recordings = await getStoryRecordings(story.id);
+      const recordings = await getStoryRecordingsForNarrator(story.id, selectedNarratorSlot);
       setStoryRecordings(recordings);
 
       // Clone voice in background — fire and forget
@@ -302,6 +326,27 @@ export default function RecordNarrationScreen() {
     return storyRecordings?.recordings.length || 0;
   };
 
+  const isLastPage = currentPage === pages.length - 1;
+  const canFinalizeStory = isLastPage && !!storyRecordings?.isComplete && !storyRecordings?.isFinalized && !isRecording && !tempRecording;
+  const narratorSlotLabel = `${selectedNarratorSlot}'s Voice`;
+
+  const handleFinalizeStoryRecording = async () => {
+    if (!story) return;
+
+    const finalized = await finalizeStoryRecording(story.id, selectedNarratorSlot);
+    if (!finalized) {
+      Alert.alert('Not Ready Yet', 'Record and save every page before saving the full narration.');
+      return;
+    }
+
+    setStoryRecordings(finalized);
+    Alert.alert(
+      'Recording Saved',
+      `The full ${narratorSlotLabel} narration is now saved to this story and can be played back anytime.`,
+      [{ text: 'Done', onPress: () => router.back() }]
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -350,7 +395,7 @@ export default function RecordNarrationScreen() {
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle} numberOfLines={1}>{story.title}</Text>
             <Text style={styles.headerSubtitle}>
-              🎙️ Recording Narration • {getRecordedPagesCount()}/{pages.length} pages
+              🎙️ {narratorSlotLabel} • {getRecordedPagesCount()}/{pages.length} pages
             </Text>
           </View>
         </View>
@@ -366,6 +411,37 @@ export default function RecordNarrationScreen() {
             />
           </View>
           <Text style={styles.pageIndicator}>Page {currentPage + 1} of {pages.length}</Text>
+        </View>
+
+        <View style={styles.narratorSelectorContainer}>
+          <Text style={styles.narratorSelectorLabel}>Choose who is recording this version</Text>
+          <View style={styles.narratorOptionsRow}>
+            {(['Mom', 'Dad'] as ParentVoiceLabel[]).map((slot) => (
+              <TouchableOpacity
+                key={slot}
+                style={[
+                  styles.narratorOptionChip,
+                  selectedNarratorSlot === slot && styles.narratorOptionChipActive,
+                ]}
+                onPress={() => {
+                  stopPlayback();
+                  setIsPlaying(false);
+                  setTempRecording(null);
+                  setSelectedNarratorSlot(slot);
+                }}
+                disabled={isRecording}
+              >
+                <Text
+                  style={[
+                    styles.narratorOptionText,
+                    selectedNarratorSlot === slot && styles.narratorOptionTextActive,
+                  ]}
+                >
+                  {slot}'s Voice
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Story Text */}
@@ -464,10 +540,21 @@ export default function RecordNarrationScreen() {
           </TouchableOpacity>
         </View>
 
+        {canFinalizeStory && (
+          <View style={styles.finalizeSection}>
+            <Text style={styles.finalizeHint}>All pages are recorded for {narratorSlotLabel}. Save the full narration to finish this version.</Text>
+            <TouchableOpacity style={styles.finalizeBtn} onPress={handleFinalizeStoryRecording}>
+              <Text style={styles.finalizeBtnText}>💾 Save Recording</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* All Done Banner */}
         {storyRecordings?.isComplete && (
           <View style={styles.completeBanner}>
-            <Text style={styles.completeBannerText}>🎉 All pages recorded!</Text>
+            <Text style={styles.completeBannerText}>
+              {storyRecordings.isFinalized ? `🎉 ${narratorSlotLabel} saved!` : `🎉 All ${narratorSlotLabel} pages recorded!`}
+            </Text>
           </View>
         )}
       </View>
@@ -580,6 +667,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontWeight: '600',
+  },
+  narratorSelectorContainer: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 14,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+  },
+  narratorSelectorLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6B21A8',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  narratorOptionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  narratorOptionChip: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+  },
+  narratorOptionChipActive: {
+    backgroundColor: '#F3E8FF',
+    borderColor: '#8B5CF6',
+  },
+  narratorOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  narratorOptionTextActive: {
+    color: '#6D28D9',
   },
   storyCard: {
     flex: 1,
@@ -752,6 +878,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+  },
+  finalizeSection: {
+    backgroundColor: '#FFF7ED',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FDBA74',
+    alignItems: 'center',
+  },
+  finalizeHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#9A3412',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontWeight: '600',
+  },
+  finalizeBtn: {
+    backgroundColor: '#F97316',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  finalizeBtnText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   navBtn: {
     paddingVertical: 12,

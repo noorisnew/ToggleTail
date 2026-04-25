@@ -13,7 +13,9 @@
  * business logic (approval workflow), not just persistence.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { StoryWithPreloadedMeta } from '../../data/seeder/PreloadedSeeder';
+import { DELETED_STORIES_KEY } from '../../data/storage/storageKeys';
 import { getStories, saveStories, type Story } from '../../data/storage/storyStorage';
 import { normalizeError } from './errorService';
 
@@ -435,14 +437,17 @@ function storyToChildDisplay(story: StoryWithPreloadedMeta): ChildDisplayStory {
  */
 export async function getVisibleStoriesForChild(category?: string): Promise<ChildDisplayStory[]> {
   const visible = await getVisibleStories();
+  const deletedIds = await getDeletedStoryIds();
   
-  let filtered = visible;
+  // Filter out deleted stories
+  let filtered = visible.filter(s => !deletedIds.has(s.id));
+  
   if (category) {
     // Map category to genre for filtering
     const genre = Object.entries(GENRE_TO_CATEGORY)
       .find(([_, cat]) => cat === category)?.[0];
     if (genre) {
-      filtered = visible.filter(s => s.theme === genre);
+      filtered = filtered.filter(s => s.theme === genre);
     }
   }
   
@@ -481,5 +486,131 @@ export async function autoApprovePreloadedStories(): Promise<number> {
   } catch (error) {
     console.error('[StoryApproval] Auto-approve failed:', normalizeError(error));
     return 0;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Soft Delete
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Get list of soft-deleted story IDs
+ */
+export async function getDeletedStoryIds(): Promise<Set<string>> {
+  try {
+    const json = await AsyncStorage.getItem(DELETED_STORIES_KEY);
+    if (!json) return new Set();
+    return new Set(JSON.parse(json) as string[]);
+  } catch (error) {
+    console.error('[StoryApproval] getDeletedStoryIds:', normalizeError(error));
+    return new Set();
+  }
+}
+
+/**
+ * Soft-delete a story (move to Recently Deleted)
+ */
+export async function softDeleteStory(storyId: string): Promise<boolean> {
+  try {
+    const deleted = await getDeletedStoryIds();
+    deleted.add(storyId);
+    await AsyncStorage.setItem(DELETED_STORIES_KEY, JSON.stringify([...deleted]));
+    console.log(`[StoryApproval] Soft-deleted story: ${storyId}`);
+    return true;
+  } catch (error) {
+    console.error('[StoryApproval] softDeleteStory:', normalizeError(error));
+    return false;
+  }
+}
+
+/**
+ * Restore a soft-deleted story
+ */
+export async function restoreStory(storyId: string): Promise<boolean> {
+  try {
+    const deleted = await getDeletedStoryIds();
+    deleted.delete(storyId);
+    await AsyncStorage.setItem(DELETED_STORIES_KEY, JSON.stringify([...deleted]));
+    console.log(`[StoryApproval] Restored story: ${storyId}`);
+    return true;
+  } catch (error) {
+    console.error('[StoryApproval] restoreStory:', normalizeError(error));
+    return false;
+  }
+}
+
+/**
+ * Permanently delete a story from storage
+ */
+export async function permanentlyDeleteStory(storyId: string): Promise<boolean> {
+  try {
+    // Remove from deleted list
+    const deleted = await getDeletedStoryIds();
+    deleted.delete(storyId);
+    await AsyncStorage.setItem(DELETED_STORIES_KEY, JSON.stringify([...deleted]));
+    
+    // Remove from stories storage
+    const stories = await getStories();
+    const filtered = stories.filter(s => s.id !== storyId);
+    await saveStories(filtered as StoryWithPreloadedMeta[]);
+    
+    console.log(`[StoryApproval] Permanently deleted story: ${storyId}`);
+    return true;
+  } catch (error) {
+    console.error('[StoryApproval] permanentlyDeleteStory:', normalizeError(error));
+    return false;
+  }
+}
+
+/**
+ * Get deleted stories for display
+ */
+export async function getDeletedStoriesForChild(): Promise<ChildDisplayStory[]> {
+  try {
+    const deletedIds = await getDeletedStoryIds();
+    if (deletedIds.size === 0) return [];
+    
+    const stories = await getStories() as StoryWithPreloadedMeta[];
+    const deletedStories = stories.filter(s => deletedIds.has(s.id));
+    
+    return deletedStories.map(storyToChildDisplay);
+  } catch (error) {
+    console.error('[StoryApproval] getDeletedStoriesForChild:', normalizeError(error));
+    return [];
+  }
+}
+
+/**
+ * Get visible stories excluding deleted ones, with preloaded/generated separation
+ */
+export async function getStoriesByType(): Promise<{
+  preloaded: ChildDisplayStory[];
+  generated: ChildDisplayStory[];
+  deleted: ChildDisplayStory[];
+}> {
+  try {
+    const deletedIds = await getDeletedStoryIds();
+    const visible = await getVisibleStories();
+    
+    const preloaded: ChildDisplayStory[] = [];
+    const generated: ChildDisplayStory[] = [];
+    const deleted: ChildDisplayStory[] = [];
+    
+    for (const story of visible) {
+      const displayStory = storyToChildDisplay(story);
+      
+      if (deletedIds.has(story.id)) {
+        deleted.push(displayStory);
+      } else if (isPreloaded(story)) {
+        preloaded.push(displayStory);
+      } else {
+        generated.push(displayStory);
+      }
+    }
+    
+    return { preloaded, generated, deleted };
+  } catch (error) {
+    console.error('[StoryApproval] getStoriesByType:', normalizeError(error));
+    return { preloaded: [], generated: [], deleted: [] };
   }
 }

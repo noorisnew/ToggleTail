@@ -1,7 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { normalizeError } from '../../domain/services/errorService';
+import type { ParentVoiceLabel } from './narrationStorage';
 import { PARENT_RECORDINGS_KEY } from './storageKeys';
+
+export type NarratorSlot = ParentVoiceLabel;
+
+const DEFAULT_NARRATOR_SLOT: NarratorSlot = 'Parent';
+const NARRATOR_SORT_ORDER: NarratorSlot[] = ['Mom', 'Dad', 'Parent'];
 
 export type NarrationRecording = {
   id: string;
@@ -15,14 +21,51 @@ export type NarrationRecording = {
 export type StoryRecordings = {
   storyId: string;
   storyTitle: string;
+  narratorSlot: NarratorSlot;
   recordings: NarrationRecording[];
   isComplete: boolean;
+  isFinalized?: boolean;
+  finalizedAt?: string;
   pageCount: number;
 };
 
 type RecordingsIndex = {
   [storyId: string]: StoryRecordings;
 };
+
+function getRecordingKey(storyId: string, narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT): string {
+  return `${storyId}::${narratorSlot}`;
+}
+
+function normalizeStoryRecordings(
+  storyId: string,
+  storyRecordings: StoryRecordings,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
+): StoryRecordings {
+  return {
+    ...storyRecordings,
+    storyId,
+    narratorSlot: storyRecordings.narratorSlot ?? narratorSlot,
+    isFinalized: storyRecordings.isFinalized ?? false,
+  };
+}
+
+function getLegacyOrSlotRecordings(
+  index: RecordingsIndex,
+  storyId: string,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
+): StoryRecordings | null {
+  const slotKey = getRecordingKey(storyId, narratorSlot);
+  if (index[slotKey]) {
+    return normalizeStoryRecordings(storyId, index[slotKey], narratorSlot);
+  }
+
+  if (narratorSlot === DEFAULT_NARRATOR_SLOT && index[storyId]) {
+    return normalizeStoryRecordings(storyId, index[storyId], DEFAULT_NARRATOR_SLOT);
+  }
+
+  return null;
+}
 
 /**
  * Get all recordings index
@@ -56,10 +99,44 @@ async function saveRecordingsIndex(index: RecordingsIndex): Promise<void> {
 export async function getStoryRecordings(storyId: string): Promise<StoryRecordings | null> {
   try {
     const index = await getRecordingsIndex();
-    return index[storyId] || null;
+    return getLegacyOrSlotRecordings(index, storyId);
   } catch (error) {
     console.error('getStoryRecordings error:', normalizeError(error));
     return null;
+  }
+}
+
+export async function getStoryRecordingsForNarrator(
+  storyId: string,
+  narratorSlot: NarratorSlot
+): Promise<StoryRecordings | null> {
+  try {
+    const index = await getRecordingsIndex();
+    return getLegacyOrSlotRecordings(index, storyId, narratorSlot);
+  } catch (error) {
+    console.error('getStoryRecordingsForNarrator error:', normalizeError(error));
+    return null;
+  }
+}
+
+export async function getAvailableStoryNarrators(storyId: string): Promise<StoryRecordings[]> {
+  try {
+    const index = await getRecordingsIndex();
+    const legacyEntry = index[storyId]
+      ? [normalizeStoryRecordings(storyId, index[storyId], DEFAULT_NARRATOR_SLOT)]
+      : [];
+    const slotEntries = Object.entries(index)
+      .filter(([key, value]) => key.startsWith(`${storyId}::`) && value.storyId === storyId)
+      .map(([, value]) => normalizeStoryRecordings(storyId, value, value.narratorSlot ?? DEFAULT_NARRATOR_SLOT));
+
+    return [...legacyEntry, ...slotEntries]
+      .filter(recording => recording.isFinalized)
+      .sort((left, right) => {
+        return NARRATOR_SORT_ORDER.indexOf(left.narratorSlot) - NARRATOR_SORT_ORDER.indexOf(right.narratorSlot);
+      });
+  } catch (error) {
+    console.error('getAvailableStoryNarrators error:', normalizeError(error));
+    return [];
   }
 }
 
@@ -68,10 +145,11 @@ export async function getStoryRecordings(storyId: string): Promise<StoryRecordin
  */
 export async function getPageRecording(
   storyId: string,
-  pageIndex: number
+  pageIndex: number,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
 ): Promise<NarrationRecording | null> {
   try {
-    const storyRecordings = await getStoryRecordings(storyId);
+    const storyRecordings = await getStoryRecordingsForNarrator(storyId, narratorSlot);
     if (!storyRecordings) return null;
     return storyRecordings.recordings.find(r => r.pageIndex === pageIndex) || null;
   } catch (error) {
@@ -89,33 +167,37 @@ export async function savePageRecording(
   pageIndex: number,
   pageCount: number,
   fileUri: string,
-  durationMs: number
+  durationMs: number,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
 ): Promise<NarrationRecording> {
   try {
     const index = await getRecordingsIndex();
+    const recordingKey = getRecordingKey(storyId, narratorSlot);
     
     // Initialize story recordings if not exists
-    if (!index[storyId]) {
-      index[storyId] = {
+    if (!index[recordingKey]) {
+      index[recordingKey] = {
         storyId,
         storyTitle,
+        narratorSlot,
         recordings: [],
         isComplete: false,
+        isFinalized: false,
         pageCount,
       };
     }
     
     // Remove existing recording for this page if any
-    const existingIndex = index[storyId].recordings.findIndex(r => r.pageIndex === pageIndex);
+    const existingIndex = index[recordingKey].recordings.findIndex(r => r.pageIndex === pageIndex);
     if (existingIndex >= 0) {
       // Delete old file
-      const oldRecording = index[storyId].recordings[existingIndex];
+      const oldRecording = index[recordingKey].recordings[existingIndex];
       try {
         await FileSystem.deleteAsync(oldRecording.fileUri, { idempotent: true });
       } catch (e) {
         // Ignore file deletion errors
       }
-      index[storyId].recordings.splice(existingIndex, 1);
+      index[recordingKey].recordings.splice(existingIndex, 1);
     }
     
     // Create new recording entry
@@ -129,14 +211,18 @@ export async function savePageRecording(
     };
     
     // Add to recordings array
-    index[storyId].recordings.push(recording);
+    index[recordingKey].recordings.push(recording);
     
     // Sort by page index
-    index[storyId].recordings.sort((a, b) => a.pageIndex - b.pageIndex);
+    index[recordingKey].recordings.sort((a, b) => a.pageIndex - b.pageIndex);
     
     // Check if all pages are recorded
-    index[storyId].isComplete = index[storyId].recordings.length >= pageCount;
-    index[storyId].pageCount = pageCount;
+    index[recordingKey].isComplete = index[recordingKey].recordings.length >= pageCount;
+    if (!index[recordingKey].isComplete) {
+      index[recordingKey].isFinalized = false;
+      index[recordingKey].finalizedAt = undefined;
+    }
+    index[recordingKey].pageCount = pageCount;
     
     // Save index
     await saveRecordingsIndex(index);
@@ -151,16 +237,21 @@ export async function savePageRecording(
 /**
  * Delete a page recording
  */
-export async function deletePageRecording(storyId: string, pageIndex: number): Promise<boolean> {
+export async function deletePageRecording(
+  storyId: string,
+  pageIndex: number,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
+): Promise<boolean> {
   try {
     const index = await getRecordingsIndex();
-    if (!index[storyId]) return false;
+    const recordingKey = getRecordingKey(storyId, narratorSlot);
+    if (!index[recordingKey]) return false;
     
-    const recordingIndex = index[storyId].recordings.findIndex(r => r.pageIndex === pageIndex);
+    const recordingIndex = index[recordingKey].recordings.findIndex(r => r.pageIndex === pageIndex);
     if (recordingIndex < 0) return false;
     
     // Delete file
-    const recording = index[storyId].recordings[recordingIndex];
+    const recording = index[recordingKey].recordings[recordingIndex];
     try {
       await FileSystem.deleteAsync(recording.fileUri, { idempotent: true });
     } catch (e) {
@@ -168,8 +259,10 @@ export async function deletePageRecording(storyId: string, pageIndex: number): P
     }
     
     // Remove from index
-    index[storyId].recordings.splice(recordingIndex, 1);
-    index[storyId].isComplete = false;
+    index[recordingKey].recordings.splice(recordingIndex, 1);
+    index[recordingKey].isComplete = false;
+    index[recordingKey].isFinalized = false;
+    index[recordingKey].finalizedAt = undefined;
     
     await saveRecordingsIndex(index);
     return true;
@@ -185,19 +278,20 @@ export async function deletePageRecording(storyId: string, pageIndex: number): P
 export async function deleteStoryRecordings(storyId: string): Promise<boolean> {
   try {
     const index = await getRecordingsIndex();
-    if (!index[storyId]) return true;
-    
-    // Delete all recording files
-    for (const recording of index[storyId].recordings) {
-      try {
-        await FileSystem.deleteAsync(recording.fileUri, { idempotent: true });
-      } catch (e) {
-        // Ignore file deletion errors
+    const matchingKeys = Object.keys(index).filter(key => key === storyId || key.startsWith(`${storyId}::`));
+    if (matchingKeys.length === 0) return true;
+
+    for (const key of matchingKeys) {
+      for (const recording of index[key].recordings) {
+        try {
+          await FileSystem.deleteAsync(recording.fileUri, { idempotent: true });
+        } catch (e) {
+          // Ignore file deletion errors
+        }
       }
+      delete index[key];
     }
-    
-    // Remove from index
-    delete index[storyId];
+
     await saveRecordingsIndex(index);
     return true;
   } catch (error) {
@@ -212,9 +306,44 @@ export async function deleteStoryRecordings(storyId: string): Promise<boolean> {
 export async function getAllStoriesWithRecordings(): Promise<StoryRecordings[]> {
   try {
     const index = await getRecordingsIndex();
-    return Object.values(index);
+    return Object.entries(index).map(([key, value]) => {
+      const storyId = value.storyId || key.split('::')[0];
+      return normalizeStoryRecordings(storyId, value, value.narratorSlot ?? DEFAULT_NARRATOR_SLOT);
+    });
   } catch (error) {
     console.error('getAllStoriesWithRecordings error:', normalizeError(error));
     return [];
+  }
+}
+
+/**
+ * Finalize a story recording once all pages have been saved.
+ * This provides an explicit end-of-flow checkpoint for the narration UI.
+ */
+export async function finalizeStoryRecording(
+  storyId: string,
+  narratorSlot: NarratorSlot = DEFAULT_NARRATOR_SLOT
+): Promise<StoryRecordings | null> {
+  try {
+    const index = await getRecordingsIndex();
+    const recordingKey = getRecordingKey(storyId, narratorSlot);
+    const storyRecordings = index[recordingKey] ?? (narratorSlot === DEFAULT_NARRATOR_SLOT ? index[storyId] : undefined);
+    if (!storyRecordings) {
+      return null;
+    }
+
+    const hasAllPages = storyRecordings.recordings.length >= storyRecordings.pageCount;
+    if (!hasAllPages) {
+      return null;
+    }
+
+    storyRecordings.isComplete = true;
+    storyRecordings.isFinalized = true;
+    storyRecordings.finalizedAt = new Date().toISOString();
+    await saveRecordingsIndex(index);
+    return normalizeStoryRecordings(storyId, storyRecordings, narratorSlot);
+  } catch (error) {
+    console.error('finalizeStoryRecording error:', normalizeError(error));
+    return null;
   }
 }

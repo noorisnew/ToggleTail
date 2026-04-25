@@ -10,6 +10,7 @@ import { seedStoriesFromLibrary } from '@/src/data/seeder';
 import { autoApprovePreloadedStories } from '@/src/domain/services/storyApprovalService';
 import { setupGlobalErrorHandling } from '@/src/services/loggerService';
 import { cleanupLegacyAuthStorage } from '@/src/services/parentGateService';
+import { getProfile } from '@/src/data/storage/profileStorage';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -18,8 +19,14 @@ export default function RootLayout() {
     setupGlobalErrorHandling();
     // Clean up legacy auth storage keys on app startup
     cleanupLegacyAuthStorage();
-    // Seed preloaded stories into storage and auto-approve them
-    seedStoriesFromLibrary().then(async (result) => {
+    // Seed preloaded stories into storage and auto-approve them.
+    // Pass the profile name as a stable per-account identifier so that each
+    // new account gets its own seeding state and always receives the bundled
+    // stories, even on a device that was previously used by another account.
+    getProfile().then(profile => {
+      const profileId = profile?.name ?? undefined;
+      return seedStoriesFromLibrary(profileId);
+    }).then(async (result) => {
       if (result.seededCount > 0) {
         console.log(`Seeded ${result.seededCount} preloaded stories`);
       }

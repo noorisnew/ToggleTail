@@ -7,6 +7,7 @@ import {
     getAllStories as getPreloadedStories,
     StoryMetadata as PreloadedStoryMetadata
 } from '../library/storyLibraryService';
+import { getAuthToken } from '../storage/authStorage';
 import {
     cacheLibraryStories,
     cacheStoryContent,
@@ -15,7 +16,6 @@ import {
     isCacheValid,
     isOnline,
 } from '../storage/libraryCacheStorage';
-import { getAuthToken } from '../storage/authStorage';
 import { InterestType } from '../storage/profileStorage';
 import { Story } from '../storage/storyStorage';
 
@@ -441,32 +441,44 @@ export async function getStoryById(storyId: string): Promise<{
   error?: string;
 }> {
   try {
-    const online = await isOnline();
+    // 1. Preloaded library assets ship with the app — instant, always available.
+    //    Try these first so opening a library story never waits on the network.
+    const preloaded = await getPreloadedStoryById(storyId);
+    if (preloaded) {
+      return { story: preloaded, success: true, fromCache: true };
+    }
 
-    // If offline, try cache first, then preloaded
+    // 2. Cached story content from a previous network fetch.
+    const cached = await getCachedStoryContent(storyId);
+    if (cached) {
+      return { story: cached as LibraryStory, success: true, fromCache: true };
+    }
+
+    // 3. If offline, give up here.
+    const online = await isOnline();
     if (!online) {
-      const cached = await getCachedStoryContent(storyId);
-      if (cached) {
-        return { story: cached as LibraryStory, success: true, fromCache: true };
-      }
-      // Try preloaded library
-      const preloaded = await getPreloadedStoryById(storyId);
-      if (preloaded) {
-        return { story: preloaded, success: true, fromCache: true };
-      }
-      return { 
-        story: null, 
-        success: false, 
+      return {
+        story: null,
+        success: false,
         fromCache: true,
-        error: 'No internet connection and story not cached' 
+        error: 'No internet connection and story not cached',
       };
     }
 
-    // Online - fetch from server
-    const response = await fetch(`${API_BASE_URL}/api/stories/${storyId}`, {
-      method: 'GET',
-      headers: await buildHeaders(),
-    });
+    // 4. Online - fetch from server with a short timeout so a dead/unreachable
+    //    backend can't block the UI for 30+ seconds.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/stories/${storyId}`, {
+        method: 'GET',
+        headers: await buildHeaders(),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const data = await response.json();
 

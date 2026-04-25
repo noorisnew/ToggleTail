@@ -17,7 +17,13 @@ import {
 } from 'react-native';
 import { getStoryById } from '../src/data/api/storyApi';
 import { addEvent } from '../src/data/storage/eventLogStorage';
-import { getPageRecording, getStoryRecordings, StoryRecordings } from '../src/data/storage/narrationRecordingStorage';
+import {
+    getAvailableStoryNarrators,
+    getPageRecording,
+    getStoryRecordingsForNarrator,
+    NarratorSlot,
+    StoryRecordings,
+} from '../src/data/storage/narrationRecordingStorage';
 import { AIVoiceId, getNarrationSettings, ParentVoiceLabel } from '../src/data/storage/narrationStorage';
 import { recordCompletedStoryReading } from '../src/data/storage/profileStorage';
 import { addScreenTime, checkScreenTimeLimit, startSession } from '../src/data/storage/settingsStorage';
@@ -102,6 +108,10 @@ const CATEGORY_COLORS: Record<string, { bg: string; accent: string; gradient: st
   'General': { bg: '#E8DEF8', accent: '#8B5CF6', gradient: ['#D0BCFF', '#8B5CF6'] },
 };
 
+function getNarratorDisplayLabel(narratorSlot: NarratorSlot): string {
+  return `${narratorSlot}'s Voice`;
+}
+
 export default function StoryViewScreen() {
   const router = useRouter();
   const { id, source } = useLocalSearchParams<{ id: string; source?: string }>();
@@ -134,6 +144,8 @@ export default function StoryViewScreen() {
   const [clonedVoiceId, setClonedVoiceId] = useState<string | undefined>();
   const [parentVoiceLabel, setParentVoiceLabel] = useState<ParentVoiceLabel>('Parent');
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
+  const [availableNarrators, setAvailableNarrators] = useState<StoryRecordings[]>([]);
+  const [selectedNarratorSlot, setSelectedNarratorSlot] = useState<NarratorSlot | null>(null);
   const [hasParentRecording, setHasParentRecording] = useState(false);
   const [isPlayingParentAudio, setIsPlayingParentAudio] = useState(false);
   
@@ -155,7 +167,7 @@ export default function StoryViewScreen() {
     if (story) {
       checkForParentRecording();
     }
-  }, [story, currentPage]);
+  }, [story, currentPage, selectedNarratorSlot]);
 
   const loadNarrationSettings = async () => {
     try {
@@ -172,10 +184,28 @@ export default function StoryViewScreen() {
   const checkForParentRecording = async () => {
     if (!story) return;
     try {
-      const recordings = await getStoryRecordings(story.id);
+      const narratorOptions = (await getAvailableStoryNarrators(story.id)).slice(0, 2);
+      setAvailableNarrators(narratorOptions);
+
+      const activeNarratorSlot = narratorOptions.find(option => option.narratorSlot === selectedNarratorSlot)?.narratorSlot
+        ?? narratorOptions[0]?.narratorSlot
+        ?? null;
+
+      if (activeNarratorSlot !== selectedNarratorSlot) {
+        setSelectedNarratorSlot(activeNarratorSlot);
+        return;
+      }
+
+      if (!activeNarratorSlot) {
+        setStoryRecordings(null);
+        setHasParentRecording(false);
+        return;
+      }
+
+      const recordings = await getStoryRecordingsForNarrator(story.id, activeNarratorSlot);
       setStoryRecordings(recordings);
-      
-      const pageRecording = await getPageRecording(story.id, currentPage);
+
+      const pageRecording = await getPageRecording(story.id, currentPage, activeNarratorSlot);
       setHasParentRecording(!!pageRecording);
     } catch (error) {
       console.log('Could not check parent recordings:', error);
@@ -579,6 +609,7 @@ export default function StoryViewScreen() {
 
   const playCurrentPage = async () => {
     if (!pages[currentPage] || !story) return;
+    const sessionNarrationMode = selectedMode === 'read-to-me' && selectedNarratorSlot ? 'Human' : narrationMode;
     
     // Show loading state while fetching/generating audio
     // Don't set isSpeaking until audio actually starts
@@ -603,7 +634,7 @@ export default function StoryViewScreen() {
       story.id,
       currentPage,
       pages[currentPage],
-      narrationMode,
+      sessionNarrationMode,
       hasParentRecording,
       {
         rate: 0.78,
@@ -650,7 +681,8 @@ export default function StoryViewScreen() {
         },
       },
       aiVoiceId,
-      clonedVoiceId
+      clonedVoiceId,
+      selectedNarratorSlot ?? undefined
     );
   };
 
@@ -807,6 +839,35 @@ export default function StoryViewScreen() {
           {/* How Would You Like to Read? */}
           <Text style={styles.modeQuestion}>How would you like to read?</Text>
 
+          {availableNarrators.length > 0 && (
+            <View style={styles.narratorPickerSection}>
+              <Text style={styles.narratorPickerTitle}>Choose whose voice to hear</Text>
+              <View style={styles.narratorPickerRow}>
+                {availableNarrators.map((narrator) => (
+                  <TouchableOpacity
+                    key={narrator.narratorSlot}
+                    style={[
+                      styles.narratorChoiceCard,
+                      selectedNarratorSlot === narrator.narratorSlot && styles.narratorChoiceCardActive,
+                    ]}
+                    onPress={() => setSelectedNarratorSlot(narrator.narratorSlot)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.narratorChoiceTitle,
+                        selectedNarratorSlot === narrator.narratorSlot && styles.narratorChoiceTitleActive,
+                      ]}
+                    >
+                      {getNarratorDisplayLabel(narrator.narratorSlot)}
+                    </Text>
+                    <Text style={styles.narratorChoiceSubtitle}>Saved story narration</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* Reading Mode Cards - Premium Design */}
           <View style={styles.modeCardsContainer}>
             
@@ -839,7 +900,8 @@ export default function StoryViewScreen() {
 
             {/* 🔊 Listen to Story Card — adapts to parent voice mode */}
             {(() => {
-              const hasParentVoice = narrationMode === 'Human' && (storyRecordings?.recordings?.length ?? 0) > 0;
+              const selectedNarrator = availableNarrators.find(option => option.narratorSlot === selectedNarratorSlot) ?? null;
+              const hasParentVoice = !!selectedNarrator;
               const isHumanMode = narrationMode === 'Human';
               const cardBg = hasParentVoice ? '#F0FDF4' : isHumanMode ? '#FFFBEB' : PREMIUM_COLORS.cardPink;
               const gradientColors: [string, string] = hasParentVoice
@@ -850,12 +912,12 @@ export default function StoryViewScreen() {
               const titleColor = hasParentVoice ? '#15803D' : isHumanMode ? '#92400E' : '#BE185D';
               const icon = hasParentVoice ? '🎤' : isHumanMode ? '🎙️' : '🔊';
               const title = hasParentVoice
-                ? `${parentVoiceLabel}'s Voice`
+                ? getNarratorDisplayLabel(selectedNarrator.narratorSlot)
                 : isHumanMode
                 ? 'Listen to Story'
                 : 'Listen to Story';
               const desc = hasParentVoice
-                ? `Narrated by ${parentVoiceLabel} — just for you!`
+                ? `Narrated by ${selectedNarrator.narratorSlot} — just for this session!`
                 : isHumanMode
                 ? 'No recording yet — AI will narrate'
                 : 'Sit back and enjoy the narration';
@@ -886,18 +948,10 @@ export default function StoryViewScreen() {
               );
             })()}
 
-            {/* ✨ Read with Help Card */}
-            <TouchableOpacity
-              style={[
-                styles.premiumModeCard,
-                { backgroundColor: isSpeechRecognitionAvailable() ? PREMIUM_COLORS.cardGreen : '#F3F4F6' },
-                !isSpeechRecognitionAvailable() && { opacity: 0.75 },
-              ]}
-              onPress={() => handleSelectMode('help-me-read')}
-              activeOpacity={0.85}
-            >
+            {/* ✨ Coming Soon Card */}
+            <View style={[styles.premiumModeCard, styles.comingSoonModeCard]}>
               <LinearGradient
-                colors={isSpeechRecognitionAvailable() ? ['#4ADE80', '#22C55E'] : ['#D1D5DB', '#9CA3AF']}
+                colors={['#D1D5DB', '#9CA3AF']}
                 style={styles.modeIconGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
@@ -905,24 +959,22 @@ export default function StoryViewScreen() {
                 <Text style={styles.modeIconLarge}>✨</Text>
               </LinearGradient>
               <View style={styles.modeCardTextContainer}>
-                <Text style={[
-                  styles.modeCardTitlePremium,
-                  { color: isSpeechRecognitionAvailable() ? '#15803D' : '#6B7280' },
-                ]}>
-                  Read with Help
-                </Text>
+                <View style={styles.comingSoonTitleRow}>
+                  <Text style={[styles.modeCardTitlePremium, styles.comingSoonModeTitle]}>
+                    Coming Soon
+                  </Text>
+                  <View style={styles.comingSoonBadge}>
+                    <Text style={styles.comingSoonBadgeText}>Planned</Text>
+                  </View>
+                </View>
                 <Text style={styles.modeCardDescPremium}>
-                  {isSpeechRecognitionAvailable()
-                    ? 'Read aloud — I listen and help!'
-                    : 'Needs a native build'}
+                  Read with Help is on the way with guided support for new readers.
                 </Text>
               </View>
-              <View style={styles.modeArrow}>
-                <Text style={styles.arrowText}>
-                  {isSpeechRecognitionAvailable() ? '→' : '🔒'}
-                </Text>
+              <View style={[styles.modeArrow, styles.comingSoonModeArrow]}>
+                <Text style={styles.arrowText}>⏳</Text>
               </View>
-            </TouchableOpacity>
+            </View>
           </View>
 
           {/* Fun Footer Message */}
@@ -1374,6 +1426,57 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingHorizontal: 24,
   },
+  narratorPickerSection: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  narratorPickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: PREMIUM_COLORS.textDark,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  narratorPickerRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  narratorChoiceCard: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  narratorChoiceCardActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#22C55E',
+  },
+  narratorChoiceTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  narratorChoiceTitleActive: {
+    color: '#15803D',
+  },
+  narratorChoiceSubtitle: {
+    fontSize: 12,
+    color: PREMIUM_COLORS.textMuted,
+    textAlign: 'center',
+  },
   
   // Premium Mode Cards
   modeCardsContainer: {
@@ -1391,6 +1494,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
+  comingSoonModeCard: {
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    opacity: 0.95,
+  },
   modeIconGradient: {
     width: 60,
     height: 60,
@@ -1405,15 +1514,37 @@ const styles = StyleSheet.create({
   modeCardTextContainer: {
     flex: 1,
   },
+  comingSoonTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
   modeCardTitlePremium: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 4,
   },
+  comingSoonModeTitle: {
+    color: '#4B5563',
+    marginBottom: 0,
+  },
   modeCardDescPremium: {
     fontSize: 14,
     color: PREMIUM_COLORS.textMuted,
     lineHeight: 20,
+  },
+  comingSoonBadge: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  comingSoonBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
   },
   modeArrow: {
     width: 36,
@@ -1422,6 +1553,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  comingSoonModeArrow: {
+    backgroundColor: '#E5E7EB',
   },
   arrowText: {
     fontSize: 18,

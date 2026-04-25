@@ -63,6 +63,31 @@ export type StoryWithPreloadedMeta = Story & {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Profile-Scoped Key Helper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns a profile-scoped AsyncStorage key for the seeded version.
+ *
+ * When a profileId is provided the key is namespaced so that every distinct
+ * profile (i.e. every account) tracks its own seeding state independently.
+ * Falling back to the bare global key keeps behaviour unchanged for any
+ * existing call-sites that don't yet pass a profileId.
+ *
+ * @example
+ * getSeededVersionKey('alice') // → 'preloaded_seeded_version_v1_alice'
+ * getSeededVersionKey()        // → 'preloaded_seeded_version_v1'
+ */
+function getSeededVersionKey(profileId?: string): string {
+  if (profileId && profileId.trim().length > 0) {
+    // Sanitise the id so it is safe to embed in a storage key
+    const safeId = profileId.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    return `${PRELOADED_SEEDED_VERSION_KEY}_${safeId}`;
+  }
+  return PRELOADED_SEEDED_VERSION_KEY;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Version Comparison
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -85,13 +110,20 @@ function compareVersions(a: string, b: string): number {
 }
 
 /**
- * Check if seeding is needed based on stored version
+ * Check if seeding is needed based on stored version.
+ *
+ * @param manifestVersion - The current manifest version string.
+ * @param profileId - Optional profile identifier used to scope the check to a
+ *   specific user account. Pass the child profile name (or any stable unique
+ *   string) so that a freshly-created account always triggers seeding even when
+ *   a previous account on the same device was already seeded.
  */
-export async function needsSeeding(manifestVersion: string): Promise<boolean> {
+export async function needsSeeding(manifestVersion: string, profileId?: string): Promise<boolean> {
   try {
-    const storedVersion = await AsyncStorage.getItem(PRELOADED_SEEDED_VERSION_KEY);
+    const key = getSeededVersionKey(profileId);
+    const storedVersion = await AsyncStorage.getItem(key);
     if (!storedVersion) {
-      return true; // Never seeded
+      return true; // Never seeded for this profile
     }
     // Seed if manifest is newer than stored version
     return compareVersions(manifestVersion, storedVersion) > 0;
@@ -102,11 +134,13 @@ export async function needsSeeding(manifestVersion: string): Promise<boolean> {
 }
 
 /**
- * Get currently seeded version
+ * Get the currently seeded version for a given profile.
+ *
+ * @param profileId - Optional profile identifier (same value passed to needsSeeding).
  */
-export async function getSeededVersion(): Promise<string | null> {
+export async function getSeededVersion(profileId?: string): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem(PRELOADED_SEEDED_VERSION_KEY);
+    return await AsyncStorage.getItem(getSeededVersionKey(profileId));
   } catch (error) {
     console.error('getSeededVersion failed:', normalizeError(error));
     return null;
@@ -256,10 +290,14 @@ async function upsertStories(newStories: StoryWithPreloadedMeta[]): Promise<void
 }
 
 /**
- * Save the seeded version to storage
+ * Save the seeded version to storage.
+ *
+ * @param version   - The manifest version string to record.
+ * @param profileId - Optional profile identifier; must match the value used in
+ *   needsSeeding so the check and the write target the same key.
  */
-async function saveSeededVersion(version: string): Promise<void> {
-  await AsyncStorage.setItem(PRELOADED_SEEDED_VERSION_KEY, version);
+async function saveSeededVersion(version: string, profileId?: string): Promise<void> {
+  await AsyncStorage.setItem(getSeededVersionKey(profileId), version);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,26 +307,30 @@ async function saveSeededVersion(version: string): Promise<void> {
 /**
  * Seed preloaded stories from manifest
  * 
- * @param manifest - The story manifest to seed from
- * @param contentLoader - Optional custom content loader function
+ * @param manifest       - The story manifest to seed from
+ * @param contentLoader  - Optional custom content loader function
+ * @param profileId      - Optional profile identifier to scope seeding state per
+ *   account. Pass the child profile name so a new account always gets seeded
+ *   even when a previous account on the same device was already seeded.
  * @returns Result object with success status and counts
- * 
+ *
  * @example
  * import manifest from '@/assets/library/manifest-v2.json';
- * const result = await seedPreloadedStories(manifest);
+ * const result = await seedPreloadedStories(manifest, undefined, 'alice');
  * console.log(`Seeded ${result.seededCount} stories`);
  */
 export async function seedPreloadedStories(
   manifest: StoryManifest,
-  contentLoader?: (path: string) => Promise<string | null>
+  contentLoader?: (path: string) => Promise<string | null>,
+  profileId?: string
 ): Promise<SeedResult> {
   const loader = contentLoader ?? loadStoryContent;
-  
+
   try {
-    // Check if seeding is needed
-    const shouldSeed = await needsSeeding(manifest.manifestVersion);
+    // Check if seeding is needed (scoped to this profile)
+    const shouldSeed = await needsSeeding(manifest.manifestVersion, profileId);
     if (!shouldSeed) {
-      const currentVersion = await getSeededVersion();
+      const currentVersion = await getSeededVersion(profileId);
       return {
         success: true,
         seededCount: 0,
@@ -328,10 +370,10 @@ export async function seedPreloadedStories(
     if (storiesToSeed.length > 0) {
       await upsertStories(storiesToSeed);
     }
-    
-    // Save seeded version
-    await saveSeededVersion(manifest.manifestVersion);
-    
+
+    // Save seeded version (scoped to this profile)
+    await saveSeededVersion(manifest.manifestVersion, profileId);
+
     // seededCount = new stories inserted (not updated)
     // skippedCount = content loading failures
     return {
@@ -352,21 +394,26 @@ export async function seedPreloadedStories(
 }
 
 /**
- * Force re-seed all stories regardless of version
- * Useful for development or data recovery
+ * Force re-seed all stories regardless of version.
+ * Useful for development or data recovery.
+ *
+ * @param manifest      - The story manifest to seed from
+ * @param contentLoader - Optional custom content loader function
+ * @param profileId     - Optional profile identifier (same as seedPreloadedStories)
  */
 export async function forceSeedPreloadedStories(
   manifest: StoryManifest,
-  contentLoader?: (path: string) => Promise<string | null>
+  contentLoader?: (path: string) => Promise<string | null>,
+  profileId?: string
 ): Promise<SeedResult> {
-  // Clear seeded version to force re-seed
+  // Clear the profile-scoped seeded version to force re-seed
   try {
-    await AsyncStorage.removeItem(PRELOADED_SEEDED_VERSION_KEY);
+    await AsyncStorage.removeItem(getSeededVersionKey(profileId));
   } catch (error) {
     console.error('Failed to clear seeded version:', normalizeError(error));
   }
-  
-  return seedPreloadedStories(manifest, contentLoader);
+
+  return seedPreloadedStories(manifest, contentLoader, profileId);
 }
 
 /**
@@ -454,24 +501,28 @@ function storyMetadataToStory(
 }
 
 /**
- * Seed stories from the bundled library service
- * 
- * This is the primary seeding function that uses storyLibraryService
- * to get stories from manifest.json in its actual format.
- * 
+ * Seed stories from the bundled library service.
+ *
+ * This is the primary seeding function that uses storyLibraryService to get
+ * stories from manifest.json in its actual format.
+ *
+ * @param profileId - Optional profile identifier used to scope seeding state
+ *   per account. Pass the child profile name (or any stable unique string for
+ *   the current user) so that a freshly-created account always gets its stories
+ *   seeded, even on a device that previously ran seeding for a different account.
  * @returns Result object with success status and counts
- * 
+ *
  * @example
  * import { seedStoriesFromLibrary } from '@/src/data/seeder';
- * const result = await seedStoriesFromLibrary();
+ * const result = await seedStoriesFromLibrary('alice');
  * console.log(`Seeded ${result.seededCount} stories`);
  */
-export async function seedStoriesFromLibrary(): Promise<SeedResult> {
+export async function seedStoriesFromLibrary(profileId?: string): Promise<SeedResult> {
   try {
-    // Check if seeding is needed
-    const shouldSeed = await needsSeeding(MANIFEST_VERSION);
+    // Check if seeding is needed for this profile
+    const shouldSeed = await needsSeeding(MANIFEST_VERSION, profileId);
     if (!shouldSeed) {
-      const currentVersion = await getSeededVersion();
+      const currentVersion = await getSeededVersion(profileId);
       return {
         success: true,
         seededCount: 0,
@@ -513,10 +564,10 @@ export async function seedStoriesFromLibrary(): Promise<SeedResult> {
     if (storiesToSeed.length > 0) {
       await upsertStories(storiesToSeed);
     }
-    
-    // Save seeded version
-    await saveSeededVersion(MANIFEST_VERSION);
-    
+
+    // Save seeded version (scoped to this profile)
+    await saveSeededVersion(MANIFEST_VERSION, profileId);
+
     return {
       success: true,
       seededCount: storiesToSeed.length - skippedCount,

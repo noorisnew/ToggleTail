@@ -1,6 +1,7 @@
 import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as Speech from 'expo-speech';
 import { useCallback, useState } from 'react';
 import {
     Alert,
@@ -77,6 +78,34 @@ const GENRES = [
   { name: 'Values', emoji: '💝' },
 ];
 
+const AI_VOICE_PREVIEWS: Record<AIVoiceId, { sample: string; rate: number; pitch: number }> = {
+  Rachel: {
+    sample: 'Hi there. I am Rachel, and I tell stories in a warm, natural way.',
+    rate: 0.95,
+    pitch: 1.0,
+  },
+  Dorothy: {
+    sample: 'Hello sweetheart. I am Dorothy, with a gentle and soothing bedtime style.',
+    rate: 0.82,
+    pitch: 0.92,
+  },
+  Josh: {
+    sample: 'Hey! I am Josh, and I keep stories fun and playful from start to finish.',
+    rate: 1.02,
+    pitch: 1.08,
+  },
+  Adam: {
+    sample: 'Hello. I am Adam, with a clear, deep voice for confident narration.',
+    rate: 0.9,
+    pitch: 0.86,
+  },
+  Sarah: {
+    sample: 'Hi! I am Sarah, and I bring bright energy to every story adventure.',
+    rate: 1.0,
+    pitch: 1.12,
+  },
+};
+
 type SettingsSection = 'screenTime' | 'readingLevel' | 'voice' | 'content' | 'profile';
 
 export default function ParentSettingsScreen() {
@@ -89,6 +118,7 @@ export default function ParentSettingsScreen() {
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<AIVoiceId | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,6 +149,30 @@ export default function ParentSettingsScreen() {
     // Keep settingsStorage.narrationMode in sync
     if (updates.preferredSource) {
       await updateSettings({ narrationMode: updates.preferredSource });
+    }
+  };
+
+  const handlePreviewVoice = async (voiceId: AIVoiceId) => {
+    const preview = AI_VOICE_PREVIEWS[voiceId];
+
+    try {
+      await Speech.stop();
+      if (previewingVoiceId === voiceId) {
+        setPreviewingVoiceId(null);
+        return;
+      }
+
+      setPreviewingVoiceId(voiceId);
+      Speech.speak(preview.sample, {
+        rate: preview.rate,
+        pitch: preview.pitch,
+        onDone: () => setPreviewingVoiceId(null),
+        onStopped: () => setPreviewingVoiceId(null),
+        onError: () => setPreviewingVoiceId(null),
+      });
+    } catch {
+      setPreviewingVoiceId(null);
+      Alert.alert('Preview unavailable', 'Unable to play the voice preview right now.');
     }
   };
 
@@ -458,24 +512,62 @@ export default function ParentSettingsScreen() {
             {(narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && (
               <View style={styles.voicePickerContainer}>
                 <Text style={styles.modeSelectorLabel}>AI Storyteller Voice</Text>
+                <Text style={styles.voicePickerHint}>Choose a storyteller, then tap Preview to hear a short sample.</Text>
                 <View style={styles.voiceGrid}>
                   {AI_VOICE_OPTIONS.map((voice) => (
-                    <TouchableOpacity
+                    <View
                       key={voice.id}
                       style={[
                         styles.voiceCard,
                         narrationSettings?.aiVoiceId === voice.id && styles.voiceCardActive,
                       ]}
-                      onPress={() => handleUpdateNarration({ aiVoiceId: voice.id as AIVoiceId })}
-                      activeOpacity={0.7}
                     >
-                      <Text style={styles.voiceEmoji}>{voice.emoji}</Text>
-                      <Text style={[
-                        styles.voiceName,
-                        narrationSettings?.aiVoiceId === voice.id && styles.voiceNameActive,
-                      ]}>{voice.name}</Text>
-                      <Text style={styles.voiceDesc}>{voice.description}</Text>
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.voiceSelectArea}
+                        onPress={() => handleUpdateNarration({ aiVoiceId: voice.id as AIVoiceId })}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.voiceCardHeader}>
+                          <View style={styles.voiceIdentity}>
+                            <View style={styles.voiceEmojiBadge}>
+                              <Text style={styles.voiceEmoji}>{voice.emoji}</Text>
+                            </View>
+                            <View style={styles.voiceTextBlock}>
+                              <Text
+                                style={[
+                                  styles.voiceName,
+                                  narrationSettings?.aiVoiceId === voice.id && styles.voiceNameActive,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {voice.name}
+                              </Text>
+                              <Text style={styles.voiceDesc} numberOfLines={1}>
+                                {voice.description}
+                              </Text>
+                            </View>
+                          </View>
+                          {narrationSettings?.aiVoiceId === voice.id && (
+                            <View style={styles.voiceSelectedBadge}>
+                              <Text style={styles.voiceSelectedBadgeText}>Selected</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.voicePreviewButton,
+                          previewingVoiceId === voice.id && styles.voicePreviewButtonActive,
+                        ]}
+                        onPress={() => handlePreviewVoice(voice.id as AIVoiceId)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.voicePreviewButtonText}>
+                          {previewingVoiceId === voice.id ? 'Stop Preview' : 'Play Preview'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   ))}
                 </View>
               </View>
@@ -529,32 +621,6 @@ export default function ParentSettingsScreen() {
               </View>
             </View>
 
-            {/* Audio Toggles */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Sound Effects</Text>
-                <Text style={styles.settingDesc}>Page turns, celebrations</Text>
-              </View>
-              <Switch
-                value={settings.soundEffects}
-                onValueChange={(value) => handleUpdateSettings({ soundEffects: value })}
-                trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
-                thumbColor={settings.soundEffects ? '#7C3AED' : '#F3F4F6'}
-              />
-            </View>
-
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Auto-Play Stories</Text>
-                <Text style={styles.settingDesc}>Automatically start narration</Text>
-              </View>
-              <Switch
-                value={settings.autoPlay}
-                onValueChange={(value) => handleUpdateSettings({ autoPlay: value })}
-                trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
-                thumbColor={settings.autoPlay ? '#7C3AED' : '#F3F4F6'}
-              />
-            </View>
           </View>
         )}
 
@@ -580,20 +646,6 @@ export default function ParentSettingsScreen() {
 
         {expandedSection === 'content' && (
           <View style={styles.sectionContent}>
-            {/* Safe Mode */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Safe Mode</Text>
-                <Text style={styles.settingDesc}>Filter all content for children</Text>
-              </View>
-              <Switch
-                value={settings.contentSafeMode}
-                onValueChange={(value) => handleUpdateSettings({ contentSafeMode: value })}
-                trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
-                thumbColor={settings.contentSafeMode ? '#7C3AED' : '#F3F4F6'}
-              />
-            </View>
-
             {/* Genre Selection */}
             <Text style={styles.genresLabel}>Allowed Genres</Text>
             <View style={styles.genresGrid}>
@@ -678,7 +730,9 @@ export default function ParentSettingsScreen() {
             {/* Age */}
             <View style={styles.profileField}>
               <Text style={styles.profileLabel}>Age</Text>
-              <View style={styles.ageButtons}>
+              <View style={styles.ageSelectorCard}>
+                <Text style={styles.ageSelectorHint}>Choose the age that best matches your child's current reading stage.</Text>
+                <View style={styles.ageButtons}>
                 {[3, 4, 5, 6, 7, 8, 9].map((age) => (
                   <TouchableOpacity
                     key={age}
@@ -687,13 +741,19 @@ export default function ParentSettingsScreen() {
                       profile.age === age && styles.ageButtonActive
                     ]}
                     onPress={() => handleUpdateProfile({ age })}
+                    activeOpacity={0.8}
                   >
+                    <Text style={[
+                      styles.ageNumber,
+                      profile.age === age && styles.ageNumberActive
+                    ]}>{age}</Text>
                     <Text style={[
                       styles.ageText,
                       profile.age === age && styles.ageTextActive
-                    ]}>{age}</Text>
+                    ]}>years</Text>
                   </TouchableOpacity>
                 ))}
+                </View>
               </View>
             </View>
 
@@ -1093,40 +1153,102 @@ const styles = StyleSheet.create({
   voicePickerContainer: {
     marginTop: 16,
   },
+  voicePickerHint: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 6,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
   voiceGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
   voiceCard: {
-    width: '47%',
+    width: '48%',
     padding: 14,
     borderRadius: 14,
     backgroundColor: '#F3F4F6',
-    alignItems: 'center',
+    alignItems: 'stretch',
+    minHeight: 126,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  voiceSelectArea: {
+    flexGrow: 1,
   },
   voiceCardActive: {
     backgroundColor: '#EDE9FE',
     borderWidth: 2,
     borderColor: '#7C3AED',
   },
+  voiceCardHeader: {
+    gap: 10,
+  },
+  voiceIdentity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  voiceEmojiBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
   voiceEmoji: {
-    fontSize: 26,
-    marginBottom: 4,
+    fontSize: 22,
+  },
+  voiceTextBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   voiceName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#374151',
-    marginBottom: 2,
+    marginBottom: 3,
   },
   voiceNameActive: {
     color: '#7C3AED',
   },
   voiceDesc: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    textAlign: 'center',
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  voiceSelectedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#7C3AED',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  voiceSelectedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  voicePreviewButton: {
+    marginTop: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  voicePreviewButtonActive: {
+    backgroundColor: '#DDD6FE',
+    borderColor: '#7C3AED',
+  },
+  voicePreviewButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4C1D95',
   },
   genresLabel: {
     fontSize: 15,
@@ -1218,28 +1340,55 @@ const styles = StyleSheet.create({
   },
   
   // Age Buttons
+  ageSelectorCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 14,
+  },
+  ageSelectorHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#6B7280',
+    marginBottom: 12,
+  },
   ageButtons: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   ageButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    minWidth: 74,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
     alignItems: 'center',
   },
   ageButtonActive: {
-    backgroundColor: '#7C3AED',
+    backgroundColor: '#F3E8FF',
+    borderColor: '#8B5CF6',
+  },
+  ageNumber: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#374151',
+  },
+  ageNumberActive: {
+    color: '#6D28D9',
   },
   ageText: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: '700',
     color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   ageTextActive: {
-    color: '#FFFFFF',
+    color: '#7C3AED',
   },
   
   // Avatar

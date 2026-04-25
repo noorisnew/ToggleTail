@@ -1,0 +1,434 @@
+% ============================================================
+% APPENDIX: GLOSSARY OF TERMS
+% ToggleTails
+% ============================================================
+
+\chapter*{Appendix A: Glossary of Terms}
+\addcontentsline{toc}{chapter}{Appendix A: Glossary of Terms}
+\label{appendix:glossary}
+
+The following glossary defines technical, domain-specific, and
+application-specific terminology used throughout this report. Terms are
+listed alphabetically within thematic groupings.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.1\quad Mobile Development}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{Android Keystore}]
+A platform-native secure storage mechanism on Android devices that provides
+hardware-backed encryption for sensitive credentials. Used in ToggleTails
+via \texttt{expo-secure-store} to protect the parent PIN hash.
+
+\item[\textbf{AsyncStorage}]
+A key-value local storage system provided by the
+\texttt{@react-native-async-storage/async-storage} library for React Native.
+Used in ToggleTails to persist child profiles, story content, approval states,
+reading progress, and narration settings across sessions. Unlike
+\texttt{expo-secure-store}, AsyncStorage does not provide hardware-level
+encryption and is not suitable for storing sensitive credentials.
+
+\item[\textbf{Cross-Platform Development}]
+A software development approach in which a single codebase compiles and runs
+on multiple operating systems. ToggleTails uses React Native with Expo to
+target both iOS and Android from one TypeScript codebase.
+
+\item[\textbf{EAS (Expo Application Services)}]
+A suite of cloud-based build and deployment tools provided by Expo for
+compiling native iOS and Android application binaries from a React Native
+codebase. EAS is used in ToggleTails to produce native builds required for
+features such as speech recognition, and to generate production-ready
+artifacts for app store distribution.
+
+\item[\textbf{Expo}]
+An open-source framework and platform built on top of React Native that
+simplifies cross-platform mobile development by providing a managed build
+system, a standard library of device APIs, and the Expo Go development client.
+ToggleTails is built using Expo SDK 54.
+
+\item[\textbf{Expo Go}]
+A development client application provided by Expo that allows React Native
+applications to be previewed on physical devices without a native build. Some
+features—specifically speech recognition—are unavailable in Expo Go and
+require an EAS native build.
+
+\item[\textbf{Expo Router}]
+A file-based navigation library for React Native built on top of React
+Navigation. In ToggleTails, screen files placed in the \texttt{app/}
+directory are automatically mapped to application routes, supporting both
+stack and tab navigation patterns.
+
+\item[\textbf{expo-av}]
+An Expo library providing audio recording and playback capabilities. Used in
+ToggleTails for recording parent narration audio and for playing back both
+human recordings and ElevenLabs-synthesised audio.
+
+\item[\textbf{expo-secure-store}]
+An Expo library that stores key-value data using platform-native secure
+enclave mechanisms: the iOS Keychain on Apple devices and the Android
+Keystore on Android devices. Used in ToggleTails to store the parent PIN hash.
+
+\item[\textbf{expo-speech}]
+An Expo library providing on-device text-to-speech synthesis. Used in
+ToggleTails as the offline fallback narration engine when ElevenLabs is
+unavailable.
+
+\item[\textbf{expo-speech-recognition}]
+An Expo library enabling continuous speech recognition using native device
+microphone input. Used in the Help Me Read feature to capture and evaluate
+the child's spoken reading. Requires a native EAS build.
+
+\item[\textbf{iOS Keychain}]
+A platform-native secure storage mechanism on iOS and macOS devices that
+provides encrypted storage for sensitive application data. Used in ToggleTails
+via \texttt{expo-secure-store} to protect the parent PIN hash.
+
+\item[\textbf{Metro Bundler}]
+The JavaScript bundler used by React Native and Expo to package application
+source files and assets into a format suitable for execution on mobile
+devices. Metro handles dynamic imports of the bundled JSON story files in
+ToggleTails.
+
+\item[\textbf{React Native}]
+An open-source mobile application framework maintained by Meta that enables
+the development of native iOS and Android applications using JavaScript and
+React. ToggleTails is built on React Native v0.81.5.
+
+\item[\textbf{TypeScript}]
+A strongly typed superset of JavaScript that adds static type checking at
+compile time. Used throughout the ToggleTails mobile codebase to improve
+reliability, tooling, and code documentation.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.2\quad Backend and Data}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{API (Application Programming Interface)}]
+A defined contract through which software components communicate. In
+ToggleTails, the backend exposes a RESTful HTTP API that the mobile client
+calls for story generation, ElevenLabs narration, child profile management,
+approvals, and synchronisation.
+
+\item[\textbf{bcrypt / bcryptjs}]
+A password-hashing algorithm that applies a configurable cost factor and a
+random salt to produce a one-way hash. Used in ToggleTails to hash parent
+passwords and PINs before storage, providing resistance to brute-force and
+rainbow-table attacks.
+
+\item[\textbf{Bearer Token}]
+An HTTP authentication scheme in which a signed token is transmitted in the
+\texttt{Authorization} header of a request. ToggleTails uses Bearer-scheme
+JWTs to authorise parent access to protected backend endpoints.
+
+\item[\textbf{CORS (Cross-Origin Resource Sharing)}]
+An HTTP mechanism that controls which origins are permitted to make requests
+to a server. The ToggleTails backend enables CORS globally for development;
+origin restriction would be applied for production deployment.
+
+\item[\textbf{CRUD}]
+An acronym for the four basic persistent storage operations: Create, Read,
+Update, and Delete. The ToggleTails backend implements CRUD operations for
+parent accounts, child profiles, story records, and approval records.
+
+\item[\textbf{dotenv}]
+A Node.js library that loads environment variables from a \texttt{.env} file
+into \texttt{process.env} at runtime. Used in the ToggleTails backend to
+manage API keys, database credentials, and JWT secrets without hardcoding
+them in source files.
+
+\item[\textbf{Express.js}]
+A minimal and flexible Node.js web application framework used to build the
+ToggleTails backend REST API. Express handles routing, middleware composition,
+and HTTP request/response processing.
+
+\item[\textbf{HTTP Status Codes}]
+Standardised numeric codes returned by HTTP servers to indicate the outcome
+of a request. Codes in the 2xx range indicate success; 4xx indicate client
+errors (such as 401 Unauthorized or 404 Not Found); 5xx indicate server
+errors.
+
+\item[\textbf{JSON (JavaScript Object Notation)}]
+A lightweight, human-readable data interchange format used throughout
+ToggleTails for API request and response payloads, story content files,
+and the story manifest.
+
+\item[\textbf{JWT (JSON Web Token)}]
+A compact, self-contained token format used for stateless authentication. A
+JWT encodes a payload (such as a parent identifier) and an expiry time,
+signed with a secret key. The ToggleTails backend issues JWTs upon successful
+authentication and validates them on protected routes.
+
+\item[\textbf{Middleware}]
+A function in a server-side framework that executes in the request-handling
+pipeline before the final route handler. In ToggleTails, middleware is used
+for JWT authentication enforcement (\texttt{requireAuth}), global error
+handling (\texttt{errorHandler.js}), and CORS configuration.
+
+\item[\textbf{MySQL}]
+An open-source relational database management system. The ToggleTails backend
+uses MySQL as its persistence layer, accessed via the Prisma ORM.
+
+\item[\textbf{Node.js}]
+A JavaScript runtime built on the V8 engine that enables server-side
+JavaScript execution. The ToggleTails backend API is implemented in Node.js.
+
+\item[\textbf{ORM (Object-Relational Mapping)}]
+A programming technique that maps database tables to objects in application
+code, abstracting raw SQL. ToggleTails uses Prisma as its ORM, providing a
+type-safe query API over MySQL.
+
+\item[\textbf{Prisma}]
+A modern Node.js ORM that generates a type-safe client from a declarative
+schema file (\texttt{schema.prisma}). Prisma handles database migrations,
+query construction, and relation management in the ToggleTails backend.
+
+\item[\textbf{REST (Representational State Transfer)}]
+An architectural style for distributed systems in which resources are
+identified by URIs and accessed using standard HTTP methods (GET, POST, PATCH,
+DELETE). The ToggleTails backend API follows REST conventions.
+
+\item[\textbf{Salt (Cryptographic)}]
+A random value added to input data before hashing to ensure that identical
+inputs produce different hashes. bcryptjs generates a unique salt for each
+credential hash, preventing precomputed rainbow-table attacks.
+
+\item[\textbf{Upsert}]
+A database operation that inserts a new record if one does not already exist,
+or updates the existing record if it does. Used in ToggleTails for story
+approval records, ensuring one record per child--story pair without
+duplicates.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.3\quad Artificial Intelligence and Narration}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{ElevenLabs}]
+A commercial neural text-to-speech and voice cloning platform. ToggleTails
+uses the ElevenLabs API to generate high-quality AI narration audio and,
+optionally, to clone a parent's voice from a recorded sample for use in AI
+narration sessions.
+
+\item[\textbf{Fuzzy Matching}]
+A string comparison technique that identifies approximate matches between
+two strings, tolerating minor differences such as pronunciation variation or
+transcription noise. Used in the Help Me Read feature to compare the child's
+spoken words against expected page text.
+
+\item[\textbf{GPT-4o-mini}]
+A compact variant of OpenAI's GPT-4o large language model. Used in
+ToggleTails for AI story generation, producing age-appropriate, personalised
+narrative text from structured prompts encoding child profile attributes.
+
+\item[\textbf{Large Language Model (LLM)}]
+A machine learning model trained on large corpora of text data, capable of
+generating coherent and contextually relevant natural language output. The
+ToggleTails story generation pipeline uses OpenAI's GPT-4o-mini as its LLM.
+
+\item[\textbf{Neural Text-to-Speech (Neural TTS)}]
+A class of speech synthesis systems that use deep neural networks to produce
+natural-sounding audio from written text. Neural TTS systems such as
+ElevenLabs produce significantly more natural prosody and voice quality than
+older rule-based or concatenative TTS systems.
+
+\item[\textbf{OpenAI}]
+An AI research and deployment company. ToggleTails uses the OpenAI API to
+access the GPT-4o-mini model for AI story generation.
+
+\item[\textbf{Prompt Engineering}]
+The practice of designing and structuring input text (prompts) to guide the
+output of a large language model. In ToggleTails, the story generation backend
+constructs prompts that encode child age, reading level, interests, and
+optional custom titles to produce well-formed, age-appropriate stories.
+
+\item[\textbf{Speech Recognition}]
+The process of converting spoken audio into text. ToggleTails uses
+\texttt{expo-speech-recognition} in the Help Me Read feature to transcribe the
+child's spoken reading in real time for comparison against expected page text.
+
+\item[\textbf{Text-to-Speech (TTS)}]
+The process of synthesising spoken audio from written text. ToggleTails
+implements TTS through two mechanisms: on-device synthesis via
+\texttt{expo-speech}, and neural synthesis via the ElevenLabs API.
+
+\item[\textbf{Voice Cloning}]
+A process in which a synthetic voice model is trained from one or more audio
+samples of a real person's voice, enabling AI synthesis to approximate that
+person's vocal characteristics. ToggleTails optionally submits parent
+recordings to the ElevenLabs Voice Cloning API to create a cloned voice for
+AI narration.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.4\quad System Architecture and Design}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{Client--Server Architecture}]
+A distributed system model in which client applications (such as the
+ToggleTails mobile app) send requests to a centralised server (the Node.js
+backend) that processes them and returns responses.
+
+\item[\textbf{Graceful Degradation}]
+A design principle in which a system maintains reduced but functional
+operation when a component fails or is unavailable. ToggleTails implements
+graceful degradation throughout: the backend is optional for core reading;
+ElevenLabs falls back to \texttt{expo-speech}; the database failure allows
+partial server operation.
+
+\item[\textbf{Layered Architecture}]
+An architectural pattern in which a system is divided into horizontal layers,
+each with a distinct responsibility, communicating only with adjacent layers.
+ToggleTails applies a four-layer model within the mobile client: Presentation,
+Domain, Data, and Platform Services.
+
+\item[\textbf{Local-First Architecture}]
+A design philosophy in which application data is stored and processed
+locally on the user's device as the primary source of truth, with network
+synchronisation as an optional enhancement rather than a requirement.
+ToggleTails adopts a local-first approach to ensure offline availability and
+protect user privacy.
+
+\item[\textbf{Modular Design}]
+A software engineering principle in which a system is decomposed into
+self-contained, independently maintainable components (modules), each with a
+clearly defined responsibility and interface. ToggleTails separates
+narration, storage, authentication, approval, and seeding into distinct
+service modules.
+
+\item[\textbf{Offline-First}]
+A software design strategy in which an application is designed to function
+without an internet connection as the baseline, with online features layered
+on top. See also: Local-First Architecture.
+
+\item[\textbf{Role-Based Access Control (RBAC)}]
+A security model in which access to system features is determined by the role
+assigned to the current user. ToggleTails implements two roles: Parent
+(authenticated, full configuration access) and Child (unauthenticated,
+read-only story access).
+
+\item[\textbf{Separation of Concerns}]
+A software design principle in which different responsibilities are handled
+by distinct components, minimising coupling and improving maintainability.
+Reflected in ToggleTails through the separation of presentation, domain,
+data, and platform layers, and through the separation of Parent View and
+Child View.
+
+\item[\textbf{Waterfall Methodology}]
+A sequential software development model in which each phase (requirements,
+design, implementation, testing, evaluation) must be completed before the
+next begins. ToggleTails is developed using the Waterfall model across four
+defined phases.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.5\quad Application-Specific Terms}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{AI Narration Mode}]
+A narration mode in ToggleTails in which story audio is generated by the
+ElevenLabs neural TTS API (or, as a fallback, by \texttt{expo-speech}).
+Contrast with Human Narration Mode.
+
+\item[\textbf{Child View}]
+The simplified, unauthenticated interface in ToggleTails through which the
+child browses stories, selects narration, and tracks reading progress.
+Configuration features are intentionally absent from this view.
+
+\item[\textbf{Help Me Read}]
+An interactive reading mode in ToggleTails in which the application listens
+to the child read aloud and provides real-time feedback on pronunciation
+accuracy using speech recognition and fuzzy word matching.
+
+\item[\textbf{Human Narration Mode}]
+A narration mode in ToggleTails in which a story is narrated using audio
+recorded by the parent. The recording is stored locally and played back via
+\texttt{expo-av} during the child's reading session.
+
+\item[\textbf{Parent Gate}]
+The PIN-based authentication mechanism in ToggleTails that restricts access
+to the Parent View. The parent creates a PIN during onboarding; it is hashed
+with bcrypt and stored in \texttt{expo-secure-store}.
+
+\item[\textbf{Parent View}]
+The authenticated configuration interface in ToggleTails accessible only to
+guardians after PIN verification. Provides access to story approval, narration
+settings, child profile management, and AI story creation.
+
+\item[\textbf{PreloadedSeeder}]
+A module in ToggleTails (\texttt{src/data/seeder/PreloadedSeeder.ts}) that
+seeds the 52 bundled story JSON files into AsyncStorage on first application
+launch, marking all pre-loaded stories as approved by default.
+
+\item[\textbf{Reading Level}]
+A classification used in ToggleTails to match story complexity to the child's
+literacy stage. Three levels are defined: Beginner, Intermediate, and
+Advanced. The reading level is set by the parent during onboarding and stored
+in the child profile.
+
+\item[\textbf{Story Approval Workflow}]
+The process in ToggleTails by which a parent reviews and approves
+AI-generated stories before they become visible to the child. Pre-loaded
+stories are auto-approved on first seed; AI-generated stories default to
+\texttt{approved: false} until the parent acts.
+
+\item[\textbf{Story Library}]
+The curated collection of 52 pre-loaded public-domain stories bundled with
+the ToggleTails application, organised across six genres (Animals, Adventure,
+Bedtime, Science, Values, Fantasy) and three reading levels. Stories are
+defined in JSON and loaded via \texttt{storyLibraryService.ts}.
+
+\item[\textbf{storyLibraryService}]
+A TypeScript module (\texttt{src/data/library/storyLibraryService.ts}) that
+provides the primary API for accessing the pre-loaded story library. Exposes
+functions for genre-filtered retrieval, reading-level filtering, paginated
+listing, and lazy full-content loading from the bundled JSON manifest.
+
+\item[\textbf{ToggleTails}]
+The mobile storytelling application developed as the engineering artefact of
+this capstone project. ToggleTails provides a child-centred reading experience
+with a dual-mode narration system (human and AI narration) governed by a
+parent-controlled configuration interface.
+
+\end{description}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section*{A.6\quad Accessibility and Standards}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{description}[leftmargin=2.5cm, style=nextline]
+
+\item[\textbf{HTTPS (Hypertext Transfer Protocol Secure)}]
+An extension of HTTP that uses TLS encryption to secure data in transit
+between client and server. The ToggleTails backend operates over HTTP during
+development; HTTPS would be enforced via a reverse proxy or managed cloud
+service prior to production deployment.
+
+\item[\textbf{Informed Consent}]
+A process by which research participants (or, in the case of minors, their
+legal guardians) are provided with sufficient information about a study to
+make a voluntary and informed decision to participate. All observational
+sessions in the ToggleTails user study were conducted under informed parental
+consent.
+
+\item[\textbf{WCAG (Web Content Accessibility Guidelines)}]
+An internationally recognised set of guidelines published by the W3C for
+making digital content accessible to people with disabilities. ToggleTails
+targets WCAG compliance for colour contrast ratios and touch target sizes to
+support users with varying visual and motor abilities.
+
+\end{description}

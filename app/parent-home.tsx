@@ -289,60 +289,23 @@ export default function ParentHomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Stories List */}
+          {/* Story Library Entry */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📚 Stories ({stories.length})</Text>
-            {stories.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyEmoji}>📝</Text>
-                <Text style={styles.emptyText}>No stories yet</Text>
-                <Text style={styles.emptySubtext}>Create your first story above!</Text>
+            <Text style={styles.sectionTitle}>📚 Stories</Text>
+            <TouchableOpacity
+              style={styles.libraryCard}
+              onPress={() => router.push('/parent-library')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.libraryCardEmoji}>📚</Text>
+              <View style={styles.libraryCardTextContainer}>
+                <Text style={styles.libraryCardTitle}>Manage Library</Text>
+                <Text style={styles.libraryCardSubtitle}>
+                  Preloaded, generated & recently deleted
+                </Text>
               </View>
-            ) : (
-              stories.map((item) => (
-                <View key={item.id} style={styles.storyItem}>
-                  <View style={styles.storyInfo}>
-                    <View style={styles.storyHeader}>
-                      <Text style={styles.storyTitle}>{item.title}</Text>
-                      <View style={[
-                        styles.statusBadge,
-                        item.approved ? styles.statusApproved : styles.statusPending
-                      ]}>
-                        <Text style={styles.statusText}>
-                          {item.approved ? '✅' : '⏳'}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.storyDate}>{formatDate(item.createdAt)}</Text>
-                  </View>
-                  <View style={styles.storyActions}>
-                    <TouchableOpacity
-                      style={styles.recordButton}
-                      onPress={() => router.push({ pathname: '/record-narration', params: { id: item.id } })}
-                    >
-                      <Text style={styles.recordButtonText}>🎙️</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        styles.approveButton,
-                        item.approved && styles.approveButtonActive,
-                      ]}
-                      onPress={() => handleToggleApproval(item)}
-                    >
-                      <Text style={styles.approveButtonText}>
-                        {item.approved ? 'Hide' : 'Show'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDelete(item.id)}
-                    >
-                      <Text style={styles.deleteButtonText}>🗑️</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
+              <Text style={styles.libraryCardArrow}>→</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Settings & Logs - Secondary Actions */}
@@ -354,7 +317,7 @@ export default function ParentHomeScreen() {
                 onPress={() => router.push('/parent-settings')}
               >
                 <Text style={styles.secondaryButtonEmoji}>⚙️</Text>
-                <Text style={styles.secondaryButtonText}>Settings</Text>
+                <Text style={styles.secondaryButtonText}>Advanced Settings</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -444,6 +407,53 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.textPrimary,
     marginBottom: Spacing.md,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
+  },
+  manageLibraryButton: {
+    backgroundColor: Colors.primaryStart,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: Spacing.md,
+  },
+  manageLibraryButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  libraryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundInput,
+    borderRadius: 16,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  libraryCardEmoji: {
+    fontSize: 32,
+  },
+  libraryCardTextContainer: {
+    flex: 1,
+  },
+  libraryCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  libraryCardSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  libraryCardArrow: {
+    fontSize: 20,
+    color: Colors.textPrimary,
+    fontWeight: '700',
   },
   narrationButtons: {
     flexDirection: 'row',

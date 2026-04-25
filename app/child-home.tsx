@@ -18,12 +18,19 @@ import {
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
 import { AvatarType, ChildProfile, getProfile, InterestType, saveProfile } from '../src/data/storage/profileStorage';
 import { normalizeError } from '../src/domain/services/errorService';
-import { ChildDisplayStory, getVisibleStoriesForChild } from '../src/domain/services/storyApprovalService';
+import {
+    ChildDisplayStory,
+    getStoriesByType,
+    permanentlyDeleteStory,
+    restoreStory,
+    softDeleteStory,
+} from '../src/domain/services/storyApprovalService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -112,13 +119,22 @@ export default function ChildHomeScreen() {
   const router = useRouter();
   // Stories loaded asynchronously from approval service (only approved stories)
   const [libraryStories, setLibraryStories] = useState<ChildDisplayStory[]>([]);
+  const [preloadedStories, setPreloadedStories] = useState<ChildDisplayStory[]>([]);
+  const [generatedStories, setGeneratedStories] = useState<ChildDisplayStory[]>([]);
+  const [deletedStories, setDeletedStories] = useState<ChildDisplayStory[]>([]);
   const [profile, setProfileState] = useState<ChildProfile | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState<GenreId | 'favorites'>('animals');
+  const [selectedGenre, setSelectedGenre] = useState<GenreId | 'favorites' | 'library'>('animals');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   // Loading state for async story loading
   const [loadingStories, setLoadingStories] = useState(true);
   const [initialGenreSet, setInitialGenreSet] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  // Collapsible section states
+  const [expandedPreloaded, setExpandedPreloaded] = useState(true);
+  const [expandedGenerated, setExpandedGenerated] = useState(true);
+  const [expandedDeleted, setExpandedDeleted] = useState(false);
 
   // Determine child's age range
   const childAgeRange = useMemo(() => {
@@ -174,12 +190,40 @@ export default function ChildHomeScreen() {
   const loadStories = async () => {
     try {
       setLoadingStories(true);
-      const stories = await getVisibleStoriesForChild();
-      setLibraryStories(stories);
+      const { preloaded, generated, deleted } = await getStoriesByType();
+      setPreloadedStories(preloaded);
+      setGeneratedStories(generated);
+      setDeletedStories(deleted);
+      // Combine preloaded and generated for existing allStories usage
+      setLibraryStories([...preloaded, ...generated]);
     } catch (error) {
       console.error('loadStories:', normalizeError(error));
     } finally {
       setLoadingStories(false);
+    }
+  };
+
+  // Handle soft delete
+  const handleSoftDelete = async (storyId: string) => {
+    const success = await softDeleteStory(storyId);
+    if (success) {
+      await loadStories();
+    }
+  };
+
+  // Handle restore from deleted
+  const handleRestore = async (storyId: string) => {
+    const success = await restoreStory(storyId);
+    if (success) {
+      await loadStories();
+    }
+  };
+
+  // Handle permanent delete
+  const handlePermanentDelete = async (storyId: string) => {
+    const success = await permanentlyDeleteStory(storyId);
+    if (success) {
+      await loadStories();
     }
   };
 
@@ -226,12 +270,6 @@ export default function ChildHomeScreen() {
     }
   };
 
-  if (!isReady) {
-    return null;
-  }
-
-  const avatarEmoji = profile?.avatar ? AVATAR_EMOJIS[profile.avatar] : '🦖';
-
   // Map category name to genre id
   const categoryToGenre = (category: string): GenreId => {
     const lower = category.toLowerCase();
@@ -254,6 +292,24 @@ export default function ChildHomeScreen() {
     emoji: s.emoji || CATEGORY_EMOJIS[s.category || 'Animals']?.[index % 6] || '📚',
     readCount: s.readCount ?? 0,
   }));
+
+  // Search stories by title, category, or genre
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const lowerQuery = searchQuery.toLowerCase().trim();
+    return allStories.filter(story => 
+      story.title.toLowerCase().includes(lowerQuery) ||
+      story.category.toLowerCase().includes(lowerQuery) ||
+      story.genre.toLowerCase().includes(lowerQuery) ||
+      (story.libraryData?.characters?.some(c => c.toLowerCase().includes(lowerQuery)) ?? false)
+    );
+  }, [searchQuery, allStories]);
+
+  if (!isReady) {
+    return null;
+  }
+
+  const avatarEmoji = profile?.avatar ? AVATAR_EMOJIS[profile.avatar] : '🦖';
 
   // Get stories for selected genre, organized by age
   const getStoriesByGenreAndAge = () => {
@@ -299,6 +355,7 @@ export default function ChildHomeScreen() {
     const bgColor = getGenreColor(item.genre);
     const emoji = item.emoji || getStoryEmoji(item.category, index);
     const pageCount = item.text?.split('\n\n').length || 8;
+    const hasBeenRead = (item.readCount ?? 0) > 0;
 
     return (
       <View key={item.id} style={styles.storyCardWrapper}>
@@ -320,6 +377,12 @@ export default function ChildHomeScreen() {
           <View style={styles.ageBadge}>
             <Text style={styles.ageBadgeText}>{item.ageRange}</Text>
           </View>
+
+          {hasBeenRead && (
+            <View style={styles.readBadge}>
+              <Text style={styles.readBadgeText}>✓ Read</Text>
+            </View>
+          )}
           
           <Text style={styles.storyCardEmoji}>{emoji}</Text>
         </TouchableOpacity>
@@ -328,12 +391,12 @@ export default function ChildHomeScreen() {
         <Text style={styles.storyCardMeta}>{pageCount} pages • {item.readingLevel}</Text>
         
         <TouchableOpacity
-          style={styles.readButton}
+          style={[styles.readButton, hasBeenRead && styles.readAgainButton]}
           onPress={() => handleStoryPress(item)}
           activeOpacity={0.8}
         >
-          <Text style={styles.readButtonEmoji}>📖</Text>
-          <Text style={styles.readButtonText}>Read Now!</Text>
+          <Text style={styles.readButtonEmoji}>{hasBeenRead ? '🔄' : '📖'}</Text>
+          <Text style={styles.readButtonText}>{hasBeenRead ? 'Read Again' : 'Read Now!'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -383,12 +446,108 @@ export default function ChildHomeScreen() {
 
   const getCurrentGenreName = () => {
     if (selectedGenre === 'favorites') return 'My Favorites';
+    if (selectedGenre === 'library') return 'My Library';
     return GENRES.find(g => g.id === selectedGenre)?.name || 'Stories';
   };
 
   const getCurrentGenreEmoji = () => {
     if (selectedGenre === 'favorites') return '❤️';
+    if (selectedGenre === 'library') return '📚';
     return GENRES.find(g => g.id === selectedGenre)?.emoji || '📚';
+  };
+
+  // Render collapsible library section
+  const renderCollapsibleSection = (
+    title: string, 
+    emoji: string, 
+    stories: DisplayStory[], 
+    expanded: boolean, 
+    setExpanded: (v: boolean) => void,
+    sectionType: 'preloaded' | 'generated' | 'deleted'
+  ) => {
+    const bgColor = sectionType === 'preloaded' ? '#E8F5E9' : sectionType === 'generated' ? '#E3F2FD' : '#FFEBEE';
+    const borderColor = sectionType === 'preloaded' ? '#81C784' : sectionType === 'generated' ? '#64B5F6' : '#E57373';
+    
+    return (
+      <View style={styles.collapsibleSection} key={sectionType}>
+        <TouchableOpacity
+          style={[styles.collapsibleHeader, { backgroundColor: bgColor, borderColor }]}
+          onPress={() => setExpanded(!expanded)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.collapsibleHeaderLeft}>
+            <Text style={styles.collapsibleEmoji}>{emoji}</Text>
+            <View>
+              <Text style={styles.collapsibleTitle}>{title}</Text>
+              <Text style={styles.collapsibleCount}>{stories.length} {stories.length === 1 ? 'story' : 'stories'}</Text>
+            </View>
+          </View>
+          <Text style={styles.collapsibleArrow}>{expanded ? '▼' : '▶'}</Text>
+        </TouchableOpacity>
+        
+        {expanded && (
+          <View style={styles.collapsibleContent}>
+            {stories.length === 0 ? (
+              <View style={styles.emptyCollapsible}>
+                <Text style={styles.emptyCollapsibleText}>
+                  {sectionType === 'deleted' ? 'No deleted stories' : 'No stories yet'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.collapsibleGrid}>
+                {stories.map((story, index) => renderLibraryStoryCard(story, index, sectionType))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Render story card for library view (with delete/restore actions)
+  const renderLibraryStoryCard = (item: DisplayStory, index: number, sectionType: 'preloaded' | 'generated' | 'deleted') => {
+    const bgColor = getGenreColor(item.genre);
+    const emoji = item.emoji || getStoryEmoji(item.category, index);
+
+    return (
+      <View key={item.id} style={styles.libraryCardWrapper}>
+        <TouchableOpacity
+          style={[styles.libraryCard, { backgroundColor: bgColor }]}
+          onPress={() => sectionType !== 'deleted' && handleStoryPress(item)}
+          activeOpacity={sectionType === 'deleted' ? 1 : 0.9}
+        >
+          <Text style={styles.libraryCardEmoji}>{emoji}</Text>
+        </TouchableOpacity>
+        <Text style={styles.libraryCardTitle} numberOfLines={2}>{item.title}</Text>
+        
+        {sectionType === 'deleted' ? (
+          <View style={styles.deletedActions}>
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={() => handleRestore(item.id)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.restoreButtonText}>↩ Restore</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.permanentDeleteButton}
+              onPress={() => handlePermanentDelete(item.id)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.permanentDeleteText}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.softDeleteButton}
+            onPress={() => handleSoftDelete(item.id)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.softDeleteText}>🗑️ Remove</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
   };
 
   // Get age range label
@@ -441,23 +600,98 @@ export default function ChildHomeScreen() {
           </View>
         </View>
 
-        {/* Genre Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.genreScroll}
-          contentContainerStyle={styles.genreScrollContent}
-        >
-          {GENRES.map(renderGenreTab)}
-        </ScrollView>
-
-        {/* Genre Title */}
-        <View style={styles.genreTitleContainer}>
-          <Text style={styles.genreTitleEmoji}>{getCurrentGenreEmoji()}</Text>
-          <Text style={styles.genreTitle}>{getCurrentGenreName()}</Text>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search stories, characters, genres..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                setIsSearching(text.length > 0);
+              }}
+              onFocus={() => setIsSearching(true)}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  setIsSearching(false);
+                }}
+                style={styles.clearButton}
+              >
+                <Text style={styles.clearButtonText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
-        {/* Stories Content */}
+        {/* Genre Tabs - Hidden when searching, viewing library, or viewing favorites */}
+        {!isSearching && selectedGenre !== 'library' && selectedGenre !== 'favorites' && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.genreScroll}
+            contentContainerStyle={styles.genreScrollContent}
+          >
+            {GENRES.map(renderGenreTab)}
+          </ScrollView>
+        )}
+
+        {/* Genre Title - Hidden when searching */}
+        {!isSearching && (
+          <View style={styles.genreTitleContainer}>
+            <Text style={styles.genreTitleEmoji}>{getCurrentGenreEmoji()}</Text>
+            <Text style={styles.genreTitle}>{getCurrentGenreName()}</Text>
+          </View>
+        )}
+
+        {/* Search Results */}
+        {isSearching && (
+          <ScrollView
+            style={styles.storiesScroll}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.storiesScrollContent}
+          >
+            {searchQuery.length > 0 && searchResults.length > 0 ? (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionEmoji}>🔍</Text>
+                  <View style={styles.sectionTitleContainer}>
+                    <Text style={styles.sectionTitle}>Search Results</Text>
+                    <Text style={styles.sectionSubtitle}>Found {searchResults.length} {searchResults.length === 1 ? 'story' : 'stories'}</Text>
+                  </View>
+                </View>
+                <View style={styles.searchResultsGrid}>
+                  {searchResults.map((story, index) => renderStoryCard(story, index))}
+                </View>
+              </>
+            ) : searchQuery.length > 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>🔎</Text>
+                <Text style={styles.emptyText}>No stories found</Text>
+                <Text style={styles.emptySubtext}>
+                  Try searching for a different title or genre
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyEmoji}>✨</Text>
+                <Text style={styles.emptyText}>Search for stories</Text>
+                <Text style={styles.emptySubtext}>
+                  Type a title, character name, or genre
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        )}
+
+        {/* Stories Content - Hidden when searching */}
+        {!isSearching && (
         <ScrollView
           style={styles.storiesScroll}
           showsVerticalScrollIndicator={false}
@@ -549,6 +783,7 @@ export default function ChildHomeScreen() {
             </>
           )}
         </ScrollView>
+        )}
 
         {/* Bottom Navigation */}
         <View style={styles.bottomNav}>
@@ -563,12 +798,12 @@ export default function ChildHomeScreen() {
             }}
             activeOpacity={0.7}
           >
-            <View style={[styles.navIconBg, selectedGenre !== 'favorites' && styles.navIconBgActive]}>
+            <View style={[styles.navIconBg, selectedGenre !== 'favorites' && selectedGenre !== 'library' && styles.navIconBgActive]}>
               <Text style={styles.navIcon}>🏠</Text>
             </View>
-            <Text style={[styles.navLabel, selectedGenre !== 'favorites' && styles.navLabelActive]}>Home</Text>
+            <Text style={[styles.navLabel, selectedGenre !== 'favorites' && selectedGenre !== 'library' && styles.navLabelActive]}>Home</Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={styles.navItem}
             onPress={() => setSelectedGenre('favorites')}
@@ -700,6 +935,49 @@ const styles = StyleSheet.create({
   },
   settingsEmoji: {
     fontSize: 20,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  searchIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#333',
+    paddingVertical: 0,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  clearButtonText: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '600',
+  },
+  searchResultsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 12,
   },
   genreScroll: {
     maxHeight: 56,
@@ -858,6 +1136,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#5D4037',
   },
+  readBadge: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  readBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   storyCardEmoji: {
     fontSize: 56,
   },
@@ -886,6 +1180,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 3,
+  },
+  readAgainButton: {
+    backgroundColor: '#7C4DFF',
+    shadowColor: '#7C4DFF',
   },
   readButtonEmoji: {
     fontSize: 14,
@@ -957,5 +1255,131 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: '#4CAF50',
     fontWeight: '700',
+  },
+  // Collapsible Section Styles
+  collapsibleSection: {
+    marginBottom: 16,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    borderWidth: 2,
+    marginHorizontal: 16,
+  },
+  collapsibleHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  collapsibleEmoji: {
+    fontSize: 24,
+  },
+  collapsibleTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  collapsibleCount: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  collapsibleArrow: {
+    fontSize: 14,
+    color: '#666',
+  },
+  collapsibleContent: {
+    marginTop: 12,
+  },
+  collapsibleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  emptyCollapsible: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  emptyCollapsibleText: {
+    fontSize: 14,
+    color: '#888',
+    fontStyle: 'italic',
+  },
+  // Library Card Styles
+  libraryCardWrapper: {
+    width: (SCREEN_WIDTH - 56) / 2,
+    marginBottom: 8,
+  },
+  libraryCard: {
+    aspectRatio: 1,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  libraryCardEmoji: {
+    fontSize: 44,
+  },
+  libraryCardTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+    lineHeight: 17,
+  },
+  softDeleteButton: {
+    backgroundColor: '#FFF3F3',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+  },
+  softDeleteText: {
+    fontSize: 12,
+    color: '#E57373',
+    fontWeight: '600',
+  },
+  deletedActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  restoreButton: {
+    flex: 1,
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#81C784',
+  },
+  restoreButtonText: {
+    fontSize: 11,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  permanentDeleteButton: {
+    backgroundColor: '#FFEBEE',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E57373',
+  },
+  permanentDeleteText: {
+    fontSize: 14,
   },
 });

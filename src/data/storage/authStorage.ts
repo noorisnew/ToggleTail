@@ -12,6 +12,7 @@ import {
     NARRATION_MODE_KEY,
     ONBOARDING_KEY,
     PARENT_RECORDINGS_KEY,
+    PRELOADED_SEEDED_VERSION_KEY,
     PROFILE_KEY,
     STORIES_KEY,
     STORY_CONTENT_CACHE_PREFIX,
@@ -65,10 +66,15 @@ export async function isSignedIn(): Promise<boolean> {
  */
 export async function signOut(): Promise<boolean> {
   try {
-    // Get all keys to find story content cache entries
+    // Get all keys to find story content cache entries and any profile-scoped
+    // seeded-version keys (e.g. 'preloaded_seeded_version_v1_alice')
     const allKeys = await AsyncStorage.getAllKeys();
-    const storyContentKeys = allKeys.filter(key => 
+    const storyContentKeys = allKeys.filter(key =>
       key.startsWith(STORY_CONTENT_CACHE_PREFIX)
+    );
+    const seededVersionKeys = allKeys.filter(key =>
+      key === PRELOADED_SEEDED_VERSION_KEY ||
+      key.startsWith(`${PRELOADED_SEEDED_VERSION_KEY}_`)
     );
 
     // Keys to remove
@@ -84,6 +90,8 @@ export async function signOut(): Promise<boolean> {
       LIBRARY_CACHE_KEY,
       LIBRARY_CACHE_TIMESTAMP_KEY,
       ...storyContentKeys,
+      // Clear seeding state so a new account always gets its stories seeded
+      ...seededVersionKeys,
     ];
 
     // Remove all keys
