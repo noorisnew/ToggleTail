@@ -479,14 +479,12 @@ export default function StoryViewScreen() {
 
     await recordCompletedStoryReading();
 
-    if (source !== 'library') {
-      const updatedStory = await updateStory(story.id, {
-        readCount: (story.readCount ?? 0) + 1,
-      });
+    const updatedStory = await updateStory(story.id, {
+      readCount: (story.readCount ?? 0) + 1,
+    });
 
-      if (updatedStory) {
-        setStory(updatedStory);
-      }
+    if (updatedStory) {
+      setStory(updatedStory);
     }
   };
 
@@ -549,7 +547,7 @@ export default function StoryViewScreen() {
             difficulty: (result.story.readingLevel || 'Easy') as 'Easy' | 'Medium' | 'Hard',
             tags: [result.story.category],
             isFavorite: false,
-            readCount: 0,
+            readCount: (result.story as any).readCount ?? 0,
           };
           setStory(libraryStory);
           const storyPages = libraryStory.text.split('\n\n').filter(p => p.trim());

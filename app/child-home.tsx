@@ -380,7 +380,7 @@ export default function ChildHomeScreen() {
 
           {hasBeenRead && (
             <View style={styles.readBadge}>
-              <Text style={styles.readBadgeText}>✓ Read</Text>
+              <Text style={styles.readBadgeText}>You've already read this!</Text>
             </View>
           )}
           
@@ -396,7 +396,7 @@ export default function ChildHomeScreen() {
           activeOpacity={0.8}
         >
           <Text style={styles.readButtonEmoji}>{hasBeenRead ? '🔄' : '📖'}</Text>
-          <Text style={styles.readButtonText}>{hasBeenRead ? 'Read Again' : 'Read Now!'}</Text>
+          <Text style={styles.readButtonText}>{hasBeenRead ? 'Read Again' : 'Read Now'}</Text>
         </TouchableOpacity>
       </View>
     );
