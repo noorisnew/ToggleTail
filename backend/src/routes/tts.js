@@ -67,6 +67,11 @@ function normalizeUpstreamError(text, status) {
   return trimmed.slice(0, 300);
 }
 
+function isVoiceCatalogPermissionError(message) {
+  const normalized = (message || '').toLowerCase();
+  return normalized.includes('voices_read');
+}
+
 async function fetchWithTimeout(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -138,10 +143,23 @@ async function checkElevenLabsHealth(forceRefresh = false) {
 
     if (!response.ok) {
       const errorText = await response.text();
+      const message = normalizeUpstreamError(errorText, response.status);
+
+      if (isVoiceCatalogPermissionError(message)) {
+        const result = {
+          available: true,
+          status: 'limited_permissions',
+          message: 'Voice catalog permission is unavailable, but TTS generation can still work with configured voice IDs.',
+          checkedAt: new Date(now).toISOString(),
+        };
+        healthCache = { checkedAt: now, result };
+        return result;
+      }
+
       const result = {
         available: false,
         status: 'upstream_error',
-        message: normalizeUpstreamError(errorText, response.status),
+        message,
         checkedAt: new Date(now).toISOString(),
       };
       healthCache = { checkedAt: now, result };

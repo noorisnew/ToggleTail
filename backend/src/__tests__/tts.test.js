@@ -60,6 +60,24 @@ describe('TTS routes', () => {
     expect(response.body.message).toContain('Invalid API key');
   });
 
+  test('GET /api/tts/health stays available when the key lacks voices_read permission', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => JSON.stringify({
+        detail: {
+          message: 'The API key you used is missing the permission voices_read to execute this operation.',
+        },
+      }),
+    });
+
+    const response = await request(createApp()).get('/api/tts/health');
+
+    expect(response.status).toBe(200);
+    expect(response.body.available).toBe(true);
+    expect(response.body.status).toBe('limited_permissions');
+  });
+
   test('POST /api/tts/generate returns audio when upstream succeeds', async () => {
     const audioBuffer = Buffer.from([0x49, 0x44, 0x33]);
     global.fetch.mockResolvedValueOnce({
