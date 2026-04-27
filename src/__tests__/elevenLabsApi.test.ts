@@ -5,9 +5,12 @@
 // Mock the config/api module to avoid react-native import issues
 jest.mock('../config/api', () => ({
   API_BASE_URL: 'http://localhost:3001',
+  TTS_API_BASE_URL: 'http://localhost:3001',
 }));
 
 import {
+    cloneVoice,
+    deleteClonedVoice,
     estimateAudioDuration,
     generateAudio,
     getAvailableVoices,
@@ -243,6 +246,129 @@ describe('ElevenLabs API', () => {
 
     it('should return false for text exceeding limit', () => {
       expect(isTextLengthValid('A'.repeat(2501))).toBe(false);
+    });
+  });
+
+  describe('cloneVoice', () => {
+    it('returns voiceId and previewUrl on success', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ voiceId: 'cloned-abc123', previewUrl: 'https://example.com/preview.mp3' }),
+      });
+
+      const result = await cloneVoice('file:///recording.m4a', 'Mom');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.voiceId).toBe('cloned-abc123');
+        expect(result.previewUrl).toBe('https://example.com/preview.mp3');
+      }
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/tts/clone-voice'),
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
+
+    it('sends audio uri and name as form data', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ voiceId: 'v1', previewUrl: null }),
+      });
+
+      await cloneVoice('file:///audio.m4a', 'Dad');
+
+      const [_url, options] = mockFetch.mock.calls[0];
+      expect(options.body).toBeInstanceOf(FormData);
+    });
+
+    it('returns error on server failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: 'Voice cloning failed' }),
+      });
+
+      const result = await cloneVoice('file:///recording.m4a');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toBe('Voice cloning failed');
+      }
+    });
+
+    it('returns error on network failure', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+      const result = await cloneVoice('file:///recording.m4a');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain('Network error');
+      }
+    });
+
+    it('uses default name when not specified', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ voiceId: 'v1', previewUrl: null }),
+      });
+
+      await cloneVoice('file:///recording.m4a');
+
+      const [_url, options] = mockFetch.mock.calls[0];
+      const formData = options.body as FormData;
+      // FormData.get is available in the test environment
+      expect((formData as any).get('name')).toBe('Parent Voice');
+    });
+  });
+
+  describe('deleteClonedVoice', () => {
+    it('returns success on 200', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, voiceId: 'abc123' }),
+      });
+
+      const result = await deleteClonedVoice('abc123');
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/tts/clone-voice/abc123'),
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+
+    it('returns error with message on server failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: 'Voice not found' }),
+      });
+
+      const result = await deleteClonedVoice('missing-id');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Voice not found');
+    });
+
+    it('returns error on network failure', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
+
+      const result = await deleteClonedVoice('abc123');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Connection refused');
+    });
+
+    it('includes voiceId in the DELETE URL', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+
+      await deleteClonedVoice('my-voice-xyz');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('my-voice-xyz'),
+        expect.anything()
+      );
     });
   });
 

@@ -1,4 +1,3 @@
-import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
@@ -11,12 +10,11 @@ import {
     StyleSheet,
     Switch,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
-import { Colors, Shadows } from '../constants/design';
-import { signOut } from '../src/data/storage/authStorage';
+import { Colors } from '../constants/design';
+import { deleteClonedVoice } from '../src/data/api/elevenLabsApi';
 import {
     AI_VOICE_OPTIONS,
     AIVoiceId,
@@ -24,250 +22,161 @@ import {
     NarrationSettings,
     saveNarrationSettings,
 } from '../src/data/storage/narrationStorage';
-import {
-    AvatarType,
-    ChildProfile,
-    getProfile,
-    InterestType,
-    updateProfile,
-} from '../src/data/storage/profileStorage';
-import {
-    ALL_GENRES,
-    AppSettings,
-    getScreenTime,
-    getSettings,
-    ScreenTimeData,
-    updateSettings,
-} from '../src/data/storage/settingsStorage';
+import { getStories, Story, updateStory } from '../src/data/storage/storyStorage';
+import { isPreloadedStory } from '../src/data/seeder/index';
 import {
     playElevenLabsAudio,
     stopElevenLabsPlayback,
 } from '../src/services/elevenLabsPlaybackService';
+import { stopPlayback as stopNarrationPlayback } from '../src/services/narrationService';
 
-// Avatar options with emojis
-const AVATARS: { type: AvatarType; emoji: string }[] = [
-  { type: 'Lion', emoji: '🦁' },
-  { type: 'Bear', emoji: '🐻' },
-  { type: 'Bunny', emoji: '🐰' },
-  { type: 'Panda', emoji: '🐼' },
-  { type: 'Fox', emoji: '🦊' },
-  { type: 'Koala', emoji: '🐨' },
-  { type: 'Unicorn', emoji: '🦄' },
-  { type: 'Frog', emoji: '🐸' },
-  { type: 'Owl', emoji: '🦉' },
-  { type: 'Octopus', emoji: '🐙' },
-  { type: 'Dino', emoji: '🦕' },
-  { type: 'Cat', emoji: '🐱' },
-];
-
-// Interest options with emojis
-const INTERESTS: { type: InterestType; emoji: string }[] = [
-  { type: 'Super Heroes', emoji: '🦸' },
-  { type: 'Dragons & Magic', emoji: '🐲' },
-  { type: 'Fairy Tales', emoji: '👸' },
-  { type: 'Mystery & Puzzles', emoji: '🔍' },
-  { type: 'Dinosaurs', emoji: '🦕' },
-  { type: 'Ocean Adventures', emoji: '🐳' },
-  { type: 'Cute Animals', emoji: '🐰' },
-  { type: 'Space & Robots', emoji: '🚀' },
-];
-
-// Genre options with emojis
-const GENRES = [
-  { name: 'Animals', emoji: '🦁' },
-  { name: 'Adventure', emoji: '🗺️' },
-  { name: 'Bedtime', emoji: '🌙' },
-  { name: 'Fantasy', emoji: '🧙' },
-  { name: 'Science', emoji: '🔬' },
-  { name: 'Values', emoji: '💝' },
-];
-
+// ─── Voice preview samples ────────────────────────────────────────────────────
 const AI_VOICE_PREVIEWS: Record<AIVoiceId, { sample: string; rate: number; pitch: number }> = {
-  Rachel: {
-    sample: 'Hi there. I am Rachel, and I tell stories in a warm, natural way.',
-    rate: 0.95,
-    pitch: 1.0,
-  },
-  Dorothy: {
-    sample: 'Hello sweetheart. I am Dorothy, with a gentle and soothing bedtime style.',
-    rate: 0.82,
-    pitch: 0.92,
-  },
-  Josh: {
-    sample: 'Hey! I am Josh, and I keep stories fun and playful from start to finish.',
-    rate: 1.02,
-    pitch: 1.08,
-  },
-  Adam: {
-    sample: 'Hello. I am Adam, with a clear, deep voice for confident narration.',
-    rate: 0.9,
-    pitch: 0.86,
-  },
-  Sarah: {
-    sample: 'Hi! I am Sarah, and I bring bright energy to every story adventure.',
-    rate: 1.0,
-    pitch: 1.12,
-  },
+  Rachel:  { sample: 'Hi there! I am Rachel, a warm and natural storyteller.',                rate: 0.95, pitch: 1.0  },
+  Dorothy: { sample: 'Hello sweetheart. I am Dorothy, gentle and soothing.',                  rate: 0.82, pitch: 0.92 },
+  Josh:    { sample: 'Hey! I am Josh. I keep stories fun and playful!',                        rate: 1.02, pitch: 1.08 },
+  Adam:    { sample: 'Hello. I am Adam, with a clear, deep voice for confident narration.',   rate: 0.90, pitch: 0.86 },
+  Sarah:   { sample: 'Hi! I am Sarah, bright and lively for every story adventure.',          rate: 1.0,  pitch: 1.12 },
 };
 
-type SettingsSection = 'screenTime' | 'readingLevel' | 'voice' | 'content' | 'profile';
+type LibTab = 'preloaded' | 'ai' | 'pending';
 
 export default function ParentSettingsScreen() {
   const router = useRouter();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [profile, setProfile] = useState<ChildProfile | null>(null);
-  const [screenTime, setScreenTime] = useState<ScreenTimeData | null>(null);
+
+  // Narration
   const [narrationSettings, setNarrationSettings] = useState<NarrationSettings | null>(null);
-  const [expandedSection, setExpandedSection] = useState<SettingsSection | null>(null);
-  const [editingName, setEditingName] = useState(false);
-  const [tempName, setTempName] = useState('');
-  const [hasChanges, setHasChanges] = useState(false);
   const [previewingVoiceId, setPreviewingVoiceId] = useState<AIVoiceId | null>(null);
+  const [isPreviewingClone, setIsPreviewingClone] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
-  );
+  // Library
+  const [stories, setStories]   = useState<Story[]>([]);
+  const [libTab, setLibTab]     = useState<LibTab>('preloaded');
 
-  const loadData = async () => {
-    const [settingsData, profileData, screenTimeData, narrationData] = await Promise.all([
-      getSettings(),
-      getProfile(),
-      getScreenTime(),
+  useFocusEffect(useCallback(() => { loadAll(); }, []));
+
+  const loadAll = async () => {
+    const [narration, allStories] = await Promise.all([
       getNarrationSettings(),
+      getStories(),
     ]);
-    setSettings(settingsData);
-    setProfile(profileData);
-    setScreenTime(screenTimeData);
-    setNarrationSettings(narrationData);
-    setTempName(profileData?.name || '');
+    setNarrationSettings(narration);
+    setStories(allStories);
   };
 
-  const handleUpdateNarration = async (updates: Partial<NarrationSettings>) => {
+  // ── Narration helpers ───────────────────────────────────────────────────────
+
+  const updateNarration = async (updates: Partial<NarrationSettings>) => {
     if (!narrationSettings) return;
     const updated = { ...narrationSettings, ...updates };
     setNarrationSettings(updated);
-    setHasChanges(true);
     await saveNarrationSettings(updated);
-    // Keep settingsStorage.narrationMode in sync
-    if (updates.preferredSource) {
-      await updateSettings({ narrationMode: updates.preferredSource });
-    }
+  };
+
+  const stopAllAudio = async () => {
+    await stopElevenLabsPlayback();
+    await stopNarrationPlayback();
+    await Speech.stop();
+    setPreviewingVoiceId(null);
+    setIsPreviewingClone(false);
+  };
+
+  const handleSelectAIVoice = (voiceId: AIVoiceId) => {
+    updateNarration({ aiVoiceId: voiceId, useClonedVoice: false });
+  };
+
+  const handleToggleClonedVoice = () => {
+    if (!narrationSettings?.clonedVoiceId) return;
+    updateNarration({ useClonedVoice: !narrationSettings.useClonedVoice });
   };
 
   const handlePreviewVoice = async (voiceId: AIVoiceId) => {
+    const wasPreviewingThis = previewingVoiceId === voiceId;
+    await stopAllAudio();
+    if (wasPreviewingThis) return;
+
+    setPreviewingVoiceId(voiceId);
     const preview = AI_VOICE_PREVIEWS[voiceId];
+    const result = await playElevenLabsAudio('voice_preview', 0, preview.sample, voiceId, () => setPreviewingVoiceId(null));
+    if (!result.success) {
+      Speech.speak(preview.sample, {
+        rate: preview.rate, pitch: preview.pitch,
+        onDone: () => setPreviewingVoiceId(null),
+        onStopped: () => setPreviewingVoiceId(null),
+        onError: () => setPreviewingVoiceId(null),
+      });
+    }
+  };
 
-    try {
+  const handlePreviewClone = async () => {
+    const voiceId = narrationSettings?.clonedVoiceId;
+    if (!voiceId) return;
+    if (isPreviewingClone) {
       await stopElevenLabsPlayback();
-      await Speech.stop();
-
-      if (previewingVoiceId === voiceId) {
-        setPreviewingVoiceId(null);
-        return;
-      }
-
-      setPreviewingVoiceId(voiceId);
-
-      // Use the ElevenLabs voice so the preview matches what the child will hear.
-      // Cache key: 'voice_preview' / index 0 / voiceId — safe because voiceId is part of the key.
-      const result = await playElevenLabsAudio(
-        'voice_preview',
-        0,
-        preview.sample,
-        voiceId,
-        () => setPreviewingVoiceId(null),
-      );
-
-      if (!result.success) {
-        // ElevenLabs unavailable — fall back to device TTS
-        Speech.speak(preview.sample, {
-          rate: preview.rate,
-          pitch: preview.pitch,
-          onDone: () => setPreviewingVoiceId(null),
-          onStopped: () => setPreviewingVoiceId(null),
-          onError: () => setPreviewingVoiceId(null),
-        });
-      }
-    } catch {
-      setPreviewingVoiceId(null);
-      Alert.alert('Preview unavailable', 'Unable to play the voice preview right now.');
-    }
-  };
-
-  const handleUpdateSettings = async (updates: Partial<AppSettings>) => {
-    if (!settings) return;
-    const newSettings = { ...settings, ...updates };
-    setSettings(newSettings);
-    setHasChanges(true);
-    await updateSettings(updates);
-  };
-
-  const handleUpdateProfile = async (updates: Partial<ChildProfile>) => {
-    if (!profile) return;
-    const updated = await updateProfile(updates);
-    if (updated) {
-      setProfile(updated);
-      setHasChanges(true);
-    }
-  };
-
-  const toggleSection = (section: SettingsSection) => {
-    setExpandedSection(expandedSection === section ? null : section);
-  };
-
-  const toggleGenre = (genre: string) => {
-    if (!settings) return;
-    const current = settings.allowedGenres || [];
-    const updated = current.includes(genre)
-      ? current.filter(g => g !== genre)
-      : [...current, genre];
-    
-    if (updated.length === 0) {
-      Alert.alert('Error', 'At least one genre must be enabled');
+      setIsPreviewingClone(false);
       return;
     }
-    handleUpdateSettings({ allowedGenres: updated });
+    await stopAllAudio();
+    setIsPreviewingClone(true);
+    const result = await playElevenLabsAudio(
+      'voice_clone_preview', 0,
+      'Hello! This is your voice clone. Your child will hear their stories narrated in this AI version of your voice.',
+      voiceId,
+      () => setIsPreviewingClone(false),
+    );
+    if (!result.success) setIsPreviewingClone(false);
   };
 
-  const toggleInterest = (interest: InterestType) => {
-    if (!profile) return;
-    const current = profile.interests || [];
-    const updated = current.includes(interest)
-      ? current.filter(i => i !== interest)
-      : [...current, interest];
-    handleUpdateProfile({ interests: updated });
-  };
-
-  const handleSignOut = () => {
+  const handleDeleteClone = () => {
     Alert.alert(
-      'Sign Out & Delete Local Account',
-      'This app stores accounts only on this device. If you sign out, this child profile, stories, recordings, and settings will be erased here and you will not be able to log back in to recover them.',
+      'Remove Voice Clone',
+      'This will permanently delete your voice clone from ElevenLabs. You can re-record anytime.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Sign Out',
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            const success = await signOut();
-            if (success) {
-              router.replace('/onboarding/welcome');
-            } else {
-              Alert.alert('Error', 'Could not sign out. Please try again.');
-            }
+            const voiceId = narrationSettings?.clonedVoiceId;
+            if (voiceId) deleteClonedVoice(voiceId);
+            await updateNarration({ clonedVoiceId: undefined, useClonedVoice: false });
           },
         },
       ]
     );
   };
 
-  if (!settings || !profile) {
+  // ── Library helpers ─────────────────────────────────────────────────────────
+
+  const filteredStories = (): Story[] => {
+    if (libTab === 'preloaded') return stories.filter(s => isPreloadedStory(s) && s.approved);
+    if (libTab === 'ai')        return stories.filter(s => !isPreloadedStory(s) && s.approved);
+    return stories.filter(s => !s.approved);
+  };
+
+  const handleToggleApproval = async (story: Story) => {
+    const updated = await updateStory(story.id, { approved: !story.approved });
+    if (updated) setStories(prev => prev.map(s => s.id === story.id ? updated : s));
+  };
+
+  // ── Active voice logic ──────────────────────────────────────────────────────
+
+  const isAIVoiceActive = (voiceId: AIVoiceId) =>
+    narrationSettings?.aiVoiceId === voiceId && !narrationSettings.useClonedVoice;
+
+  const isCloneActive = () => !!narrationSettings?.useClonedVoice && !!narrationSettings?.clonedVoiceId;
+
+  const libCounts = {
+    preloaded: stories.filter(s => isPreloadedStory(s) && s.approved).length,
+    ai:        stories.filter(s => !isPreloadedStory(s) && s.approved).length,
+    pending:   stories.filter(s => !s.approved).length,
+  };
+
+  if (!narrationSettings) {
     return (
       <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingEmoji}>⚙️</Text>
-          <Text style={styles.loadingText}>Loading settings...</Text>
+        <View style={styles.loading}>
+          <Text style={styles.loadingText}>Loading…</Text>
         </View>
       </View>
     );
@@ -276,1261 +185,457 @@ export default function ParentSettingsScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Header */}
       <LinearGradient
         colors={[Colors.primaryStart, Colors.primaryEnd]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
         style={styles.header}
       >
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backButtonText}>←</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerEmoji}>⚙️</Text>
-          <Text style={styles.headerTitle}>Parent Settings</Text>
-        </View>
-        <View style={styles.placeholder} />
+        <Text style={styles.headerTitle}>Parent Settings</Text>
+        <View style={styles.headerSpacer} />
       </LinearGradient>
 
-      <ScrollView 
-        style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Screen Time Section */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection('screenTime')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionEmoji}>⏱️</Text>
-            <View>
-              <Text style={styles.sectionTitle}>Screen Time</Text>
-              <Text style={styles.sectionSubtitle}>
-                {settings.screenTimeEnabled 
-                  ? `${settings.dailyTimeLimit} min daily limit`
-                  : 'Unlimited'}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.expandIcon}>
-            {expandedSection === 'screenTime' ? '▼' : '▶'}
-          </Text>
-        </TouchableOpacity>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {expandedSection === 'screenTime' && (
-          <View style={styles.sectionContent}>
-            {/* Today's Usage */}
-            {screenTime && (
-              <View style={styles.usageCard}>
-                <Text style={styles.usageTitle}>Today's Usage</Text>
-                <View style={styles.usageStats}>
-                  <View style={styles.usageStat}>
-                    <Text style={styles.usageNumber}>{screenTime.minutesUsed}</Text>
-                    <Text style={styles.usageLabel}>minutes</Text>
-                  </View>
-                  <View style={styles.usageDivider} />
-                  <View style={styles.usageStat}>
-                    <Text style={styles.usageNumber}>{screenTime.sessionsCount}</Text>
-                    <Text style={styles.usageLabel}>sessions</Text>
-                  </View>
+        {/* ═══════════════════════════════════════════════════════════════════
+            NARRATION SETUP
+        ═══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.section}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionEmoji}>🎧</Text>
+            <Text style={styles.sectionLabel}>Narration Setup</Text>
+          </View>
+
+          {/* Voice card row */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.voiceRow}
+          >
+            {/* AI voice cards */}
+            {AI_VOICE_OPTIONS.map(voice => {
+              const active = isAIVoiceActive(voice.id as AIVoiceId);
+              const previewing = previewingVoiceId === voice.id;
+              return (
+                <TouchableOpacity
+                  key={voice.id}
+                  style={[styles.voiceCard, active && styles.voiceCardActive]}
+                  onPress={() => handleSelectAIVoice(voice.id as AIVoiceId)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.voiceCardEmoji}>{voice.emoji}</Text>
+                  <Text style={[styles.voiceCardName, active && styles.voiceCardNameActive]}>{voice.name}</Text>
+                  <Text style={styles.voiceCardDesc} numberOfLines={2}>{voice.description}</Text>
+                  {active && <View style={styles.activeDot} />}
+                  <TouchableOpacity
+                    style={[styles.previewBtn, previewing && styles.previewBtnActive]}
+                    onPress={() => handlePreviewVoice(voice.id as AIVoiceId)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={[styles.previewBtnText, previewing && styles.previewBtnTextActive]}>
+                      {previewing ? '■' : '▶'}
+                    </Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* Custom voice card */}
+            {narrationSettings.clonedVoiceId ? (
+              <TouchableOpacity
+                style={[styles.voiceCard, styles.cloneCard, isCloneActive() && styles.voiceCardActive]}
+                onPress={handleToggleClonedVoice}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.voiceCardEmoji}>👤</Text>
+                <Text style={[styles.voiceCardName, isCloneActive() && styles.voiceCardNameActive]}>My Voice</Text>
+                <Text style={styles.voiceCardDesc}>Your cloned voice</Text>
+                {isCloneActive() && <View style={styles.activeDot} />}
+                <View style={styles.cloneActions}>
+                  <TouchableOpacity
+                    style={[styles.previewBtn, isPreviewingClone && styles.previewBtnActive]}
+                    onPress={handlePreviewClone}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={[styles.previewBtnText, isPreviewingClone && styles.previewBtnTextActive]}>
+                      {isPreviewingClone ? '■' : '▶'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleDeleteClone}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={styles.deleteCloneText}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-                {settings.screenTimeEnabled && settings.dailyTimeLimit > 0 && (
-                  <View style={styles.progressBarContainer}>
-                    <View style={styles.progressBarBg}>
-                      <View 
-                        style={[
-                          styles.progressBarFill,
-                          { 
-                            width: `${Math.min(100, (screenTime.minutesUsed / settings.dailyTimeLimit) * 100)}%`,
-                            backgroundColor: screenTime.minutesUsed >= settings.dailyTimeLimit ? '#EF4444' : '#22C55E'
-                          }
-                        ]} 
-                      />
-                    </View>
-                    <Text style={styles.progressText}>
-                      {Math.max(0, settings.dailyTimeLimit - screenTime.minutesUsed)} min remaining
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.voiceCard, styles.addVoiceCard]}
+                onPress={() => router.push('/recording-studio')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addVoiceIcon}>+</Text>
+                <Text style={styles.addVoiceName}>Your Voice</Text>
+                <Text style={styles.addVoiceDesc}>Clone your voice with ElevenLabs</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+
+          {/* Narration mode toggle — page-by-page recordings vs AI */}
+          <View style={styles.modeRow}>
+            <View style={styles.modeInfo}>
+              <Text style={styles.modeLabel}>Page-by-page Recordings</Text>
+              <Text style={styles.modeDesc}>Use your voice recordings per story page instead of AI</Text>
+            </View>
+            <Switch
+              value={narrationSettings.preferredSource === 'Human'}
+              onValueChange={v => updateNarration({ preferredSource: v ? 'Human' : 'AI' })}
+              trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
+              thumbColor={narrationSettings.preferredSource === 'Human' ? '#7C3AED' : '#F3F4F6'}
+            />
+          </View>
+        </View>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            CREATE
+        ═══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.section}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionEmoji}>⚡</Text>
+            <Text style={styles.sectionLabel}>Create</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.createCard}
+            onPress={() => router.push('/story-create')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.createCardLeft}>
+              <Text style={styles.createCardEmoji}>📖</Text>
+              <View>
+                <Text style={styles.createCardTitle}>Your Own Story</Text>
+                <Text style={styles.createCardDesc}>Generate a custom story with AI</Text>
+              </View>
+            </View>
+            <Text style={styles.createCardArrow}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.createCard}
+            onPress={() => router.push('/recording-studio')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.createCardLeft}>
+              <Text style={styles.createCardEmoji}>🎙️</Text>
+              <View>
+                <Text style={styles.createCardTitle}>Your Own Voice</Text>
+                <Text style={styles.createCardDesc}>
+                  {narrationSettings.clonedVoiceId ? 'Re-record or update your voice clone' : 'Clone your voice for story narration'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.createCardArrow}>→</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            MANAGE LIBRARY
+        ═══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.section}>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionEmoji}>📚</Text>
+            <Text style={styles.sectionLabel}>Manage Library</Text>
+          </View>
+
+          {/* Tabs */}
+          <View style={styles.tabRow}>
+            {([
+              { key: 'preloaded', label: 'Preloaded', count: libCounts.preloaded },
+              { key: 'ai',        label: 'AI Stories', count: libCounts.ai },
+              { key: 'pending',   label: 'Pending',    count: libCounts.pending },
+            ] as { key: LibTab; label: string; count: number }[]).map(tab => (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.tab, libTab === tab.key && styles.tabActive]}
+                onPress={() => setLibTab(tab.key)}
+              >
+                <Text style={[styles.tabText, libTab === tab.key && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+                {tab.count > 0 && (
+                  <View style={[styles.tabBadge, libTab === tab.key && styles.tabBadgeActive]}>
+                    <Text style={[styles.tabBadgeText, libTab === tab.key && styles.tabBadgeTextActive]}>
+                      {tab.count}
                     </Text>
                   </View>
                 )}
-              </View>
-            )}
+              </TouchableOpacity>
+            ))}
+          </View>
 
-            {/* Enable Screen Time */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Enable Time Limits</Text>
-                <Text style={styles.settingDesc}>Restrict daily reading time</Text>
+          {/* Story list */}
+          <View style={styles.storyList}>
+            {filteredStories().length === 0 ? (
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyEmoji}>
+                  {libTab === 'preloaded' ? '📚' : libTab === 'ai' ? '🤖' : '⏳'}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {libTab === 'preloaded' ? 'No preloaded stories found'
+                   : libTab === 'ai' ? 'No AI-generated stories yet'
+                   : 'No pending stories'}
+                </Text>
               </View>
-              <Switch
-                value={settings.screenTimeEnabled}
-                onValueChange={(value) => handleUpdateSettings({ screenTimeEnabled: value })}
-                trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
-                thumbColor={settings.screenTimeEnabled ? '#7C3AED' : '#F3F4F6'}
-              />
-            </View>
-
-            {/* Time Limit Slider */}
-            {settings.screenTimeEnabled && (
-              <View style={styles.sliderContainer}>
-                <View style={styles.sliderHeader}>
-                  <Text style={styles.sliderLabel}>Daily Limit</Text>
-                  <Text style={styles.sliderValue}>{settings.dailyTimeLimit} min</Text>
+            ) : (
+              filteredStories().map(story => (
+                <View key={story.id} style={styles.storyRow}>
+                  <View style={styles.storyInfo}>
+                    <Text style={styles.storyTitle} numberOfLines={1}>{story.title}</Text>
+                    <Text style={styles.storyMeta}>
+                      {story.difficulty} · {story.tags?.slice(0, 2).join(', ')}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.approveToggle, story.approved && styles.approveToggleOn]}
+                    onPress={() => handleToggleApproval(story)}
+                  >
+                    <Text style={[styles.approveToggleText, story.approved && styles.approveToggleTextOn]}>
+                      {story.approved ? '✓ On' : 'Off'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Slider
-                  style={styles.slider}
-                  minimumValue={15}
-                  maximumValue={120}
-                  step={5}
-                  value={settings.dailyTimeLimit}
-                  onValueChange={(value) => handleUpdateSettings({ dailyTimeLimit: value })}
-                  minimumTrackTintColor="#7C3AED"
-                  maximumTrackTintColor="#E5E7EB"
-                  thumbTintColor="#7C3AED"
-                />
-                <View style={styles.sliderMarks}>
-                  <Text style={styles.sliderMark}>15m</Text>
-                  <Text style={styles.sliderMark}>1hr</Text>
-                  <Text style={styles.sliderMark}>2hr</Text>
-                </View>
-              </View>
+              ))
             )}
           </View>
-        )}
-
-        {/* Reading Level Section */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection('readingLevel')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionEmoji}>📚</Text>
-            <View>
-              <Text style={styles.sectionTitle}>Reading Level</Text>
-              <Text style={styles.sectionSubtitle}>
-                Level {settings.readingLevel} - {
-                  settings.readingLevel === 1 ? 'Beginner (Ages 1-4)' :
-                  settings.readingLevel === 2 ? 'Intermediate (Ages 5-8)' :
-                  'Advanced (Ages 9-12)'
-                }
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.expandIcon}>
-            {expandedSection === 'readingLevel' ? '▼' : '▶'}
-          </Text>
-        </TouchableOpacity>
-
-        {expandedSection === 'readingLevel' && (
-          <View style={styles.sectionContent}>
-            {/* Level Selection */}
-            <View style={styles.levelButtons}>
-              {[1, 2, 3].map((level) => (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.levelButton,
-                    settings.readingLevel === level && styles.levelButtonActive
-                  ]}
-                  onPress={() => handleUpdateSettings({ readingLevel: level as 1 | 2 | 3 })}
-                >
-                  <Text style={styles.levelEmoji}>
-                    {level === 1 ? '🌱' : level === 2 ? '🌿' : '🌳'}
-                  </Text>
-                  <Text style={[
-                    styles.levelText,
-                    settings.readingLevel === level && styles.levelTextActive
-                  ]}>
-                    Level {level}
-                  </Text>
-                  <Text style={styles.levelDesc}>
-                    {level === 1 ? 'Simple words' : level === 2 ? 'Short sentences' : 'Full stories'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Auto-adjust */}
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Auto-Adjust Level</Text>
-                <Text style={styles.settingDesc}>Automatically increase level based on progress</Text>
-              </View>
-              <Switch
-                value={settings.autoAdjustLevel}
-                onValueChange={(value) => handleUpdateSettings({ autoAdjustLevel: value })}
-                trackColor={{ false: '#E5E7EB', true: '#A78BFA' }}
-                thumbColor={settings.autoAdjustLevel ? '#7C3AED' : '#F3F4F6'}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Voice Settings Section */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection('voice')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionEmoji}>🔊</Text>
-            <View>
-              <Text style={styles.sectionTitle}>Voice & Audio</Text>
-              <Text style={styles.sectionSubtitle}>
-                Speed: {settings.voiceSpeed}x | {narrationSettings?.preferredSource ?? settings.narrationMode} Narration
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.expandIcon}>
-            {expandedSection === 'voice' ? '▼' : '▶'}
-          </Text>
-        </TouchableOpacity>
-
-        {expandedSection === 'voice' && (
-          <View style={styles.sectionContent}>
-            {/* Narration Mode */}
-            <View style={styles.modeSelector}>
-              <Text style={styles.modeSelectorLabel}>Narration Mode</Text>
-              <View style={styles.modeButtons}>
-                <TouchableOpacity
-                  style={[
-                    styles.modeButton,
-                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && styles.modeButtonActive
-                  ]}
-                  onPress={() => handleUpdateNarration({ preferredSource: 'AI' })}
-                >
-                  <Text style={styles.modeEmoji}>🤖</Text>
-                  <Text style={[
-                    styles.modeText,
-                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && styles.modeTextActive
-                  ]}>AI Voice</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modeButton,
-                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'Human' && styles.modeButtonActive
-                  ]}
-                  onPress={() => handleUpdateNarration({ preferredSource: 'Human' })}
-                >
-                  <Text style={styles.modeEmoji}>🎤</Text>
-                  <Text style={[
-                    styles.modeText,
-                    (narrationSettings?.preferredSource ?? settings.narrationMode) === 'Human' && styles.modeTextActive
-                  ]}>Your Voice</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* AI Voice Picker — only shown when AI mode is active */}
-            {(narrationSettings?.preferredSource ?? settings.narrationMode) === 'AI' && (
-              <View style={styles.voicePickerContainer}>
-                <Text style={styles.modeSelectorLabel}>AI Storyteller Voice</Text>
-                <Text style={styles.voicePickerHint}>Choose a storyteller, then tap Preview to hear a short sample.</Text>
-                <View style={styles.voiceGrid}>
-                  {AI_VOICE_OPTIONS.map((voice) => (
-                    <View
-                      key={voice.id}
-                      style={[
-                        styles.voiceCard,
-                        narrationSettings?.aiVoiceId === voice.id && styles.voiceCardActive,
-                      ]}
-                    >
-                      <TouchableOpacity
-                        style={styles.voiceSelectArea}
-                        onPress={() => handleUpdateNarration({ aiVoiceId: voice.id as AIVoiceId })}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.voiceCardHeader}>
-                          <View style={styles.voiceIdentity}>
-                            <View style={styles.voiceEmojiBadge}>
-                              <Text style={styles.voiceEmoji}>{voice.emoji}</Text>
-                            </View>
-                            <View style={styles.voiceTextBlock}>
-                              <Text
-                                style={[
-                                  styles.voiceName,
-                                  narrationSettings?.aiVoiceId === voice.id && styles.voiceNameActive,
-                                ]}
-                                numberOfLines={1}
-                              >
-                                {voice.name}
-                              </Text>
-                              <Text style={styles.voiceDesc} numberOfLines={1}>
-                                {voice.description}
-                              </Text>
-                            </View>
-                          </View>
-                          {narrationSettings?.aiVoiceId === voice.id && (
-                            <View style={styles.voiceSelectedBadge}>
-                              <Text style={styles.voiceSelectedBadgeText}>Selected</Text>
-                            </View>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          styles.voicePreviewButton,
-                          previewingVoiceId === voice.id && styles.voicePreviewButtonActive,
-                        ]}
-                        onPress={() => handlePreviewVoice(voice.id as AIVoiceId)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.voicePreviewButtonText}>
-                          {previewingVoiceId === voice.id ? 'Stop Preview' : 'Play Preview'}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Voice Speed */}
-            <View style={styles.sliderContainer}>
-              <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>Voice Speed</Text>
-                <Text style={styles.sliderValue}>{settings.voiceSpeed.toFixed(1)}x</Text>
-              </View>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.5}
-                maximumValue={1.5}
-                step={0.1}
-                value={settings.voiceSpeed}
-                onValueChange={(value) => handleUpdateSettings({ voiceSpeed: value })}
-                minimumTrackTintColor="#7C3AED"
-                maximumTrackTintColor="#E5E7EB"
-                thumbTintColor="#7C3AED"
-              />
-              <View style={styles.sliderMarks}>
-                <Text style={styles.sliderMark}>Slow</Text>
-                <Text style={styles.sliderMark}>Normal</Text>
-                <Text style={styles.sliderMark}>Fast</Text>
-              </View>
-            </View>
-
-            {/* Voice Pitch */}
-            <View style={styles.sliderContainer}>
-              <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>Voice Pitch</Text>
-                <Text style={styles.sliderValue}>{settings.voicePitch.toFixed(1)}x</Text>
-              </View>
-              <Slider
-                style={styles.slider}
-                minimumValue={0.5}
-                maximumValue={1.5}
-                step={0.1}
-                value={settings.voicePitch}
-                onValueChange={(value) => handleUpdateSettings({ voicePitch: value })}
-                minimumTrackTintColor="#7C3AED"
-                maximumTrackTintColor="#E5E7EB"
-                thumbTintColor="#7C3AED"
-              />
-              <View style={styles.sliderMarks}>
-                <Text style={styles.sliderMark}>Low</Text>
-                <Text style={styles.sliderMark}>Normal</Text>
-                <Text style={styles.sliderMark}>High</Text>
-              </View>
-            </View>
-
-          </View>
-        )}
-
-        {/* Content Filters Section */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection('content')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionEmoji}>🎯</Text>
-            <View>
-              <Text style={styles.sectionTitle}>Content Filters</Text>
-              <Text style={styles.sectionSubtitle}>
-                {settings.allowedGenres.length} of {ALL_GENRES.length} genres enabled
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.expandIcon}>
-            {expandedSection === 'content' ? '▼' : '▶'}
-          </Text>
-        </TouchableOpacity>
-
-        {expandedSection === 'content' && (
-          <View style={styles.sectionContent}>
-            {/* Genre Selection */}
-            <Text style={styles.genresLabel}>Allowed Genres</Text>
-            <View style={styles.genresGrid}>
-              {GENRES.map((genre) => (
-                <TouchableOpacity
-                  key={genre.name}
-                  style={[
-                    styles.genreChip,
-                    settings.allowedGenres.includes(genre.name) && styles.genreChipActive
-                  ]}
-                  onPress={() => toggleGenre(genre.name)}
-                >
-                  <Text style={styles.genreEmoji}>{genre.emoji}</Text>
-                  <Text style={[
-                    styles.genreText,
-                    settings.allowedGenres.includes(genre.name) && styles.genreTextActive
-                  ]}>{genre.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Child Profile Section */}
-        <TouchableOpacity
-          style={styles.sectionHeader}
-          onPress={() => toggleSection('profile')}
-          activeOpacity={0.7}
-        >
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionEmoji}>👶</Text>
-            <View>
-              <Text style={styles.sectionTitle}>Child Profile</Text>
-              <Text style={styles.sectionSubtitle}>
-                {profile.name || 'Unknown'}, Age {profile.age}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.expandIcon}>
-            {expandedSection === 'profile' ? '▼' : '▶'}
-          </Text>
-        </TouchableOpacity>
-
-        {expandedSection === 'profile' && (
-          <View style={styles.sectionContent}>
-            {/* Name */}
-            <View style={styles.profileField}>
-              <Text style={styles.profileLabel}>Name</Text>
-              {editingName ? (
-                <View style={styles.nameEditRow}>
-                  <TextInput
-                    style={styles.nameInput}
-                    value={tempName}
-                    onChangeText={setTempName}
-                    maxLength={30}
-                    autoFocus
-                    placeholder="Enter name"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                  <TouchableOpacity
-                    style={styles.saveButton}
-                    onPress={() => {
-                      const trimmedName = tempName.trim();
-                      if (trimmedName) {
-                        handleUpdateProfile({ name: trimmedName.slice(0, 30) });
-                      }
-                      setEditingName(false);
-                    }}
-                  >
-                    <Text style={styles.saveButtonText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.profileValueRow}
-                  onPress={() => setEditingName(true)}
-                >
-                  <Text style={styles.profileValue}>{profile.name}</Text>
-                  <Text style={styles.editIcon}>✏️</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Age */}
-            <View style={styles.profileField}>
-              <Text style={styles.profileLabel}>Age</Text>
-              <View style={styles.ageSelectorCard}>
-                <Text style={styles.ageSelectorHint}>Choose the age that best matches your child's current reading stage.</Text>
-                <View style={styles.ageButtons}>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((age) => (
-                  <TouchableOpacity
-                    key={age}
-                    style={[
-                      styles.ageButton,
-                      profile.age === age && styles.ageButtonActive
-                    ]}
-                    onPress={() => handleUpdateProfile({ age })}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[
-                      styles.ageNumber,
-                      profile.age === age && styles.ageNumberActive
-                    ]}>{age}</Text>
-                    <Text style={[
-                      styles.ageText,
-                      profile.age === age && styles.ageTextActive
-                    ]}>years</Text>
-                  </TouchableOpacity>
-                ))}
-                </View>
-              </View>
-            </View>
-
-            {/* Avatar */}
-            <View style={styles.profileField}>
-              <Text style={styles.profileLabel}>Avatar</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={styles.avatarScroll}
-              >
-                {AVATARS.map((avatar) => (
-                  <TouchableOpacity
-                    key={avatar.type}
-                    style={[
-                      styles.avatarOption,
-                      profile.avatar === avatar.type && styles.avatarOptionActive
-                    ]}
-                    onPress={() => handleUpdateProfile({ avatar: avatar.type })}
-                  >
-                    <Text style={styles.avatarEmoji}>{avatar.emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* Interests */}
-            <View style={styles.profileField}>
-              <Text style={styles.profileLabel}>Interests</Text>
-              <View style={styles.interestsGrid}>
-                {INTERESTS.map((interest) => (
-                  <TouchableOpacity
-                    key={interest.type}
-                    style={[
-                      styles.interestChip,
-                      profile.interests?.includes(interest.type) && styles.interestChipActive
-                    ]}
-                    onPress={() => toggleInterest(interest.type)}
-                  >
-                    <Text style={styles.interestEmoji}>{interest.emoji}</Text>
-                    <Text style={[
-                      styles.interestText,
-                      profile.interests?.includes(interest.type) && styles.interestTextActive
-                    ]}>{interest.type}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Reading Stats */}
-            <View style={styles.statsCard}>
-              <Text style={styles.statsTitle}>📊 Reading Stats</Text>
-              <View style={styles.statsRow}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>{profile.readingStreak || 0}</Text>
-                  <Text style={styles.statLabel}>Day Streak 🔥</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statNumber}>{profile.totalStoriesRead || 0}</Text>
-                  <Text style={styles.statLabel}>Stories Read 📚</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Sign Out Section */}
-        <View style={styles.signOutSection}>
-          <TouchableOpacity
-            style={styles.signOutButton}
-            onPress={handleSignOut}
-          >
-            <Text style={styles.signOutIcon}>🚪</Text>
-            <Text style={styles.signOutText}>Sign Out & Reset App</Text>
-          </TouchableOpacity>
-          <Text style={styles.signOutHint}>This permanently deletes this device-only account and restarts onboarding.</Text>
         </View>
 
-        {/* Bottom spacer */}
-        <View style={styles.bottomSpacer} />
+        {/* ═══════════════════════════════════════════════════════════════════
+            BOTTOM BUTTONS
+        ═══════════════════════════════════════════════════════════════════ */}
+        <View style={styles.bottomRow}>
+          <TouchableOpacity
+            style={styles.bottomBtn}
+            onPress={() => router.push('/advanced-settings')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.bottomBtnEmoji}>⚙️</Text>
+            <Text style={styles.bottomBtnText}>Advanced</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.bottomBtn}
+            onPress={() => router.push('/parent-home')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.bottomBtnEmoji}>📋</Text>
+            <Text style={styles.bottomBtnText}>Logs</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 32 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingEmoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  loadingText: {
-    fontSize: 18,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  
-  // Header
+  container: { flex: 1, backgroundColor: '#F3F4F6' },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 16, color: '#6B7280', fontWeight: '600' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 16 : 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 56,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backButtonText: {
-    fontSize: 24,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerEmoji: {
-    fontSize: 28,
-    marginRight: 10,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  placeholder: {
-    width: 44,
-  },
-  
-  // Content
-  content: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 16,
-  },
-  
-  // Section Header
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 8,
-    ...Shadows.card,
-  },
-  sectionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  sectionEmoji: {
-    fontSize: 28,
-    marginRight: 12,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  sectionSubtitle: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  expandIcon: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginLeft: 8,
-  },
-  
-  // Section Content
-  sectionContent: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    marginTop: -4,
-    ...Shadows.card,
-  },
-  
-  // Usage Card
-  usageCard: {
-    backgroundColor: '#F3E8FF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  usageTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#7C3AED',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  usageStats: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  usageStat: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  usageNumber: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#5B21B6',
-  },
-  usageLabel: {
-    fontSize: 12,
-    color: '#7C3AED',
-    marginTop: 2,
-  },
-  usageDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#C4B5FD',
-  },
-  progressBarContainer: {
-    marginTop: 16,
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: '#DDD6FE',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  progressText: {
-    fontSize: 12,
-    color: '#7C3AED',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  
-  // Setting Row
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  settingInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  settingLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  settingDesc: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  
-  // Slider
-  sliderContainer: {
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  sliderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  sliderLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  sliderValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#7C3AED',
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  sliderMarks: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-  },
-  sliderMark: {
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-  
-  // Level Buttons
-  levelButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  levelButton: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-    marginHorizontal: 4,
-  },
-  levelButtonActive: {
-    backgroundColor: '#EDE9FE',
-    borderWidth: 2,
-    borderColor: '#7C3AED',
-  },
-  levelEmoji: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  levelText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6B7280',
-  },
-  levelTextActive: {
-    color: '#7C3AED',
-  },
-  levelDesc: {
-    fontSize: 10,
-    color: '#9CA3AF',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  
-  // Mode Selector
-  modeSelector: {
-    marginBottom: 16,
-  },
-  modeSelectorLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
-  },
-  modeButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-  modeButtonActive: {
-    backgroundColor: '#EDE9FE',
-    borderWidth: 2,
-    borderColor: '#7C3AED',
-  },
-  modeEmoji: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  modeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  modeTextActive: {
-    color: '#7C3AED',
-  },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  backBtnText: { color: '#fff', fontSize: 22, fontWeight: '600' },
+  headerTitle: { flex: 1, color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  headerSpacer: { width: 36 },
 
-  // AI Voice Picker
-  voicePickerContainer: {
-    marginTop: 16,
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 20, gap: 16 },
+
+  // Section wrapper
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  voicePickerHint: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginTop: 6,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  voiceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  sectionEmoji: { fontSize: 18 },
+  sectionLabel: { fontSize: 16, fontWeight: '800', color: '#111827', letterSpacing: 0.2 },
+
+  // ── Voice cards ────────────────────────────────────────────────────────────
+  voiceRow: { paddingRight: 8, gap: 10, paddingBottom: 4 },
   voiceCard: {
-    width: '48%',
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'stretch',
-    minHeight: 126,
-    justifyContent: 'space-between',
-    borderWidth: 1,
+    width: 110,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 2,
     borderColor: '#E5E7EB',
-  },
-  voiceSelectArea: {
-    flexGrow: 1,
+    gap: 4,
   },
   voiceCardActive: {
-    backgroundColor: '#EDE9FE',
-    borderWidth: 2,
     borderColor: '#7C3AED',
+    backgroundColor: '#F5F3FF',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  voiceCardHeader: {
-    gap: 10,
+  voiceCardEmoji: { fontSize: 26 },
+  voiceCardName: { fontSize: 13, fontWeight: '700', color: '#374151', textAlign: 'center' },
+  voiceCardNameActive: { color: '#7C3AED' },
+  voiceCardDesc: { fontSize: 10, color: '#9CA3AF', textAlign: 'center', lineHeight: 13 },
+  activeDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#7C3AED', marginTop: 2,
   },
-  voiceIdentity: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  previewBtn: {
+    marginTop: 6, paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 10, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB',
   },
-  voiceEmojiBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
+  previewBtnActive: { backgroundColor: '#EDE9FE', borderColor: '#7C3AED' },
+  previewBtnText: { color: '#6B7280', fontSize: 11, fontWeight: '700' },
+  previewBtnTextActive: { color: '#7C3AED' },
+
+  // Clone card
+  cloneCard: { borderStyle: 'dashed', borderColor: '#A78BFA' },
+  cloneActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  deleteCloneText: { color: '#EF4444', fontSize: 13, fontWeight: '700', paddingTop: 5 },
+
+  // Add voice card
+  addVoiceCard: {
+    borderStyle: 'dashed',
+    borderColor: '#C4B5FD',
+    backgroundColor: '#FAFAFF',
     justifyContent: 'center',
-    marginRight: 10,
+    minHeight: 130,
   },
-  voiceEmoji: {
-    fontSize: 22,
-  },
-  voiceTextBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  voiceName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 3,
-  },
-  voiceNameActive: {
-    color: '#7C3AED',
-  },
-  voiceDesc: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  voiceSelectedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#7C3AED',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  voiceSelectedBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  voicePreviewButton: {
-    marginTop: 14,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  voicePreviewButtonActive: {
-    backgroundColor: '#DDD6FE',
-    borderColor: '#7C3AED',
-  },
-  voicePreviewButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4C1D95',
-  },
-  genresLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginTop: 16,
-    marginBottom: 12,
-  },
-  genresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  genreChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  genreChipActive: {
-    backgroundColor: '#EDE9FE',
-    borderColor: '#7C3AED',
-  },
-  genreEmoji: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  genreText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  genreTextActive: {
-    color: '#7C3AED',
-  },
-  
-  // Profile
-  profileField: {
-    marginBottom: 20,
-  },
-  profileLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 10,
-  },
-  profileValueRow: {
+  addVoiceIcon: { fontSize: 28, color: '#7C3AED', fontWeight: '300', textAlign: 'center' },
+  addVoiceName: { fontSize: 13, fontWeight: '700', color: '#7C3AED', textAlign: 'center' },
+  addVoiceDesc: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
+
+  // Mode toggle
+  modeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F3F4F6',
-    padding: 14,
-    borderRadius: 12,
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
   },
-  profileValue: {
-    fontSize: 16,
-    color: '#1F2937',
-    fontWeight: '500',
-  },
-  editIcon: {
-    fontSize: 16,
-  },
-  nameEditRow: {
+  modeInfo: { flex: 1, paddingRight: 12 },
+  modeLabel: { fontSize: 14, fontWeight: '600', color: '#374151' },
+  modeDesc: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
+
+  // ── Create cards ──────────────────────────────────────────────────────────
+  createCard: {
     flexDirection: 'row',
-    gap: 10,
-  },
-  nameInput: {
-    flex: 1,
-    backgroundColor: '#F3F4F6',
-    padding: 14,
-    borderRadius: 12,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  saveButton: {
-    backgroundColor: '#7C3AED',
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-    borderRadius: 12,
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  
-  // Age Buttons
-  ageSelectorCard: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#F9FAFB',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderRadius: 14,
     padding: 14,
-  },
-  ageSelectorHint: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: '#6B7280',
-    marginBottom: 12,
-  },
-  ageButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  ageButton: {
-    minWidth: 74,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    alignItems: 'center',
   },
-  ageButtonActive: {
-    backgroundColor: '#F3E8FF',
-    borderColor: '#8B5CF6',
-  },
-  ageNumber: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#374151',
-  },
-  ageNumberActive: {
-    color: '#6D28D9',
-  },
-  ageText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  ageTextActive: {
-    color: '#7C3AED',
-  },
-  
-  // Avatar
-  avatarScroll: {
-    marginHorizontal: -4,
-  },
-  avatarOption: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 4,
-    borderWidth: 3,
-    borderColor: 'transparent',
-  },
-  avatarOptionActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#EDE9FE',
-  },
-  avatarEmoji: {
-    fontSize: 28,
-  },
-  
-  // Interests
-  interestsGrid: {
+  createCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  createCardEmoji: { fontSize: 24 },
+  createCardTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  createCardDesc: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  createCardArrow: { fontSize: 18, color: '#9CA3AF', fontWeight: '300' },
+
+  // ── Library ───────────────────────────────────────────────────────────────
+  tabRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  interestChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
     backgroundColor: '#F3F4F6',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  interestChipActive: {
-    backgroundColor: '#EDE9FE',
-    borderColor: '#7C3AED',
-  },
-  interestEmoji: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  interestText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  interestTextActive: {
-    color: '#7C3AED',
-  },
-  
-  // Stats Card
-  statsCard: {
-    backgroundColor: '#F0FDF4',
     borderRadius: 12,
-    padding: 16,
-  },
-  statsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#166534',
-    textAlign: 'center',
+    padding: 3,
     marginBottom: 12,
+    gap: 2,
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#22C55E',
-    marginTop: 2,
-  },
-  
-  bottomSpacer: {
-    height: 40,
-  },
-  
-  // Sign Out
-  signOutSection: {
-    marginTop: 24,
-    paddingHorizontal: 4,
-  },
-  signOutButton: {
+  tab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EF4444',
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 5,
+  },
+  tabActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
+  tabText: { fontSize: 12, fontWeight: '600', color: '#9CA3AF' },
+  tabTextActive: { color: '#111827' },
+  tabBadge: { backgroundColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
+  tabBadgeActive: { backgroundColor: '#EDE9FE' },
+  tabBadgeText: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
+  tabBadgeTextActive: { color: '#7C3AED' },
+
+  storyList: { gap: 8 },
+  emptyState: { alignItems: 'center', paddingVertical: 24 },
+  emptyEmoji: { fontSize: 36, marginBottom: 8 },
+  emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+
+  storyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  signOutIcon: {
-    fontSize: 20,
-    marginRight: 8,
+  storyInfo: { flex: 1, paddingRight: 8 },
+  storyTitle: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  storyMeta: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
+  approveToggle: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 10, backgroundColor: '#F3F4F6',
+    borderWidth: 1, borderColor: '#E5E7EB',
   },
-  signOutText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  approveToggleOn: { backgroundColor: '#F0FDF4', borderColor: '#22C55E' },
+  approveToggleText: { fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
+  approveToggleTextOn: { color: '#16A34A' },
+
+  // ── Bottom row ─────────────────────────────────────────────────────────────
+  bottomRow: { flexDirection: 'row', gap: 12 },
+  bottomBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  signOutHint: {
-    fontSize: 12,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  bottomBtnEmoji: { fontSize: 18 },
+  bottomBtnText: { fontSize: 15, fontWeight: '700', color: '#374151' },
 });

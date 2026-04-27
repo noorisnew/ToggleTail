@@ -1,0 +1,314 @@
+\chapter{System Design}
+
+\section{Introduction}
+
+This chapter presents the architectural and design decisions that underpin the ToggleTails application. The design encompasses five principal concerns: the layered application architecture, the navigation and routing structure, the client-side data persistence model, the backend server and relational database, and the integration with external AI APIs. Each design decision is motivated by the functional and non-functional requirements defined in Chapter 4. The system was designed to be modular, offline-capable, and maintainable, with clear separation between the child-facing and parent-facing surfaces of the application.
+
+\section{Architectural Overview}
+
+ToggleTails follows a three-layer architecture that separates presentation, domain logic, and data management concerns. This separation ensures that UI components remain decoupled from business logic and that storage operations can be modified independently of the interface layer.
+
+\begin{table}[H]
+\centering
+\caption{Three-Layer Architecture}
+\label{tab:architecture_layers}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{3.5cm}|>{\RaggedRight\arraybackslash}p{4cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Layer} & \textbf{Components} & \textbf{Responsibilities} \\
+\hline
+Presentation Layer & Screen components (\texttt{.tsx} files), navigation layouts, UI primitives & Renders interface elements, handles user input, triggers domain logic in response to events. \\
+\hline
+Domain Logic Layer & \texttt{src/domain/services/}, \texttt{src/services/}, \texttt{src/hooks/} & Enforces business rules (access control, narration resolution, story approval, password policy), manages application state, and coordinates between the presentation layer and data layer. \\
+\hline
+Data Management Layer & \texttt{src/data/storage/}, \texttt{src/data/api/}, \texttt{src/data/library/} & Reads and writes persistent data via AsyncStorage, SecureStore, and the file system; issues HTTP requests to the backend API. \\
+\hline
+\end{tabularx}
+\end{table}
+
+The backend server sits outside this three-layer model and is treated as an external dependency. It provides parent account authentication, child profile management, story persistence, approval workflows, playback session tracking, and AI API proxying, backed by a MySQL relational database. The client is designed to operate in a degraded mode when the backend is unreachable, with story generation and narration falling back to local alternatives.
+
+\section{Application Architecture}
+
+\subsection*{Framework and Toolchain}
+
+ToggleTails is built with React Native using the Expo SDK (version \textasciitilde54.0.33). Expo provides a managed workflow that abstracts platform-specific configuration for iOS and Android, while EAS Build enables compilation of native modules that are incompatible with the Expo Go sandbox (specifically \texttt{expo-speech-recognition} and the \texttt{expo-av} recording API). The project is written entirely in TypeScript (\textasciitilde5.9.2), with ESLint enforcing consistent code style across all modules.
+
+\subsection*{File-Based Routing with Expo Router}
+
+Navigation is implemented using Expo Router (\textasciitilde6.0.23), which maps the file system structure under \texttt{app/} directly to application routes. This eliminates the need for a centralised navigator configuration and makes the routing structure immediately readable from the directory tree.
+
+\begin{table}[H]
+\centering
+\caption{Screen Inventory and Route Mapping}
+\label{tab:screen_inventory}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{5.5cm}|>{\RaggedRight\arraybackslash}p{2.5cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{File Path} & \textbf{Access Role} & \textbf{Purpose} \\
+\hline
+\texttt{app/index.tsx} & Public & Entry point; reads the stored profile and routes to onboarding or child home. \\
+\hline
+\texttt{app/onboarding/role.tsx} & Public & Role selection on first launch. \\
+\hline
+\texttt{app/onboarding/welcome.tsx} & Public & Welcome screen. \\
+\hline
+\texttt{app/onboarding/child-name.tsx} & Public & Child name entry during onboarding. \\
+\hline
+\texttt{app/onboarding/age.tsx} & Public & Age group selection during onboarding. \\
+\hline
+\texttt{app/onboarding/avatar.tsx} & Public & Avatar selection during onboarding. \\
+\hline
+\texttt{app/onboarding/interests.tsx} & Public & Reading interest selection during onboarding. \\
+\hline
+\texttt{app/onboarding/parent-password.tsx} & Public & Parent credential creation during onboarding. \\
+\hline
+\texttt{app/onboarding/password-saved.tsx} & Public & Onboarding completion confirmation. \\
+\hline
+\texttt{app/child-home.tsx} & Child & Child-facing home screen with story browsing. \\
+\hline
+\texttt{app/parent-home.tsx} & Parent (gated) & Parent dashboard and navigation hub. \\
+\hline
+\texttt{app/parent-gate.tsx} & System & Credential verification gate before parent screens. \\
+\hline
+\texttt{app/parent-library.tsx} & Parent (gated) & Browse and manage the bundled story library. \\
+\hline
+\texttt{app/parent-settings.tsx} & Parent (gated) & Application and profile settings. \\
+\hline
+\texttt{app/story-create.tsx} & Parent (gated) & AI story generation interface. \\
+\hline
+\texttt{app/story-view.tsx} & Child / Parent & Story reading and audio playback. \\
+\hline
+\texttt{app/record-narration.tsx} & Parent (gated) & Per-page voice recording interface. \\
+\hline
+\texttt{app/recording-studio.tsx} & Parent (gated) & Voice cloning studio. \\
+\hline
+\texttt{app/profile.tsx} & Parent (gated) & Child profile management. \\
+\hline
+\texttt{app/advanced-settings.tsx} & Parent (gated) & Advanced application configuration. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\section{Role-Based Access and Navigation Flow}
+
+Access control is enforced at two levels. At the navigation level, \texttt{parent-gate.tsx} intercepts any transition to a parent-restricted route and presents a credential prompt; only upon successful verification is the target screen rendered. At the feature level, the \texttt{canAccess(role, feature)} function in \texttt{src/domain/services/accessControl.ts} applies a deny-by-default policy — unknown roles and unknown features both return \texttt{false} — and is exposed through the \texttt{AccessGuard} component and \texttt{useAccessControl} hook used throughout the UI.
+
+Table~\ref{fig:nav_flow} describes the top-level navigation flow of the application.
+
+\begin{table}[H]
+\centering
+\caption{Navigation Flow Summary}
+\label{fig:nav_flow}
+\renewcommand{\arraystretch}{1.5}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{4cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Entry Point} & \textbf{Flow} \\
+\hline
+First Launch & App detects no stored profile → routes to \texttt{onboarding/role.tsx} → sequential onboarding steps → child home. \\
+\hline
+Returning Child User & App detects existing profile → routes directly to \texttt{child-home.tsx}. \\
+\hline
+Parent Access Attempt & User taps parent entry point → \texttt{parent-gate.tsx} prompts for credential → on success, navigates to \texttt{parent-home.tsx}. \\
+\hline
+Story Playback & User selects story from child home or library → \texttt{story-view.tsx} loads content and initiates audio playback. \\
+\hline
+Story Creation & Authenticated parent navigates to \texttt{story-create.tsx} → prompt submitted to backend \texttt{/api/stories/generate} → generated story stored and accessible from child home. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\section{User Interface Design}
+
+The application presents two distinct interface surfaces: one optimised for young children and one for parents. These surfaces share a common codebase but differ substantially in interaction model, visual density, and available functionality.
+
+\subsection*{Child-Facing Interface}
+
+The child interface (\texttt{child-home.tsx}, \texttt{story-view.tsx}) is designed for pre-literate and early-literate users. Key design principles applied to this surface include:
+
+\begin{itemize}
+    \item \textbf{Large touch targets} — interactive elements meet the minimum 44×44 point target size recommended for accessibility.
+    \item \textbf{Icon-first navigation} — actions are communicated through icons and imagery rather than text labels wherever possible.
+    \item \textbf{Audio feedback} — narration and playback controls provide auditory confirmation of user actions.
+    \item \textbf{Minimal cognitive load} — the child home screen surfaces a small number of high-priority items: recently read stories, favourites, and the library entry point.
+\end{itemize}
+
+\subsection*{Parent-Facing Interface}
+
+The parent interface is accessible only after authentication through \texttt{parent-gate.tsx}. It provides a richer set of controls suited to adult users:
+
+\begin{itemize}
+    \item \textbf{Story creation} — a text input interface for entering story prompts and reviewing AI-generated output before saving.
+    \item \textbf{Voice recording} — \texttt{record-narration.tsx} provides per-page recording; \texttt{recording-studio.tsx} handles submission of recordings to the ElevenLabs voice cloning pipeline.
+    \item \textbf{Library management} — browsing and assignment of the 50 bundled stories across six genre categories (Animals, Adventure, Bedtime, Science, Values, Fantasy).
+    \item \textbf{Profile management} — editing child profile attributes including name, age, avatar, and reading interests.
+    \item \textbf{Settings} — application-level configuration and credential management.
+\end{itemize}
+
+\section{Data Architecture}
+
+ToggleTails uses a dual data model: a local-first client that persists all child-facing data on the device, and a backend MySQL database that stores parent accounts, child profiles (server-side), story records, approvals, and playback sessions when a backend connection is available. The two stores operate independently; the client does not require a live backend connection to serve stories or play narration.
+
+\subsection*{Client Storage}
+
+Two storage mechanisms are used on the client, each suited to a different class of data.
+
+\begin{table}[H]
+\centering
+\caption{Client Data Storage}
+\label{tab:data_storage}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{4.5cm}|>{\RaggedRight\arraybackslash}p{3cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Data Entity} & \textbf{Storage Mechanism} & \textbf{Notes} \\
+\hline
+Parent password hash (\texttt{toggletail\_parent\_password\_hash}) & Expo SecureStore (primary); AsyncStorage fallback & bcrypt hash (cost factor 10, \texttt{v2:} prefix). SecureStore uses the device hardware keychain; AsyncStorage is used where SecureStore is unavailable. \\
+\hline
+Child profile (\texttt{child\_profile\_v1}) & AsyncStorage & Name, age, reading level, avatar, interests, reading streak, favourites. \\
+\hline
+Stories (\texttt{stories\_v1}) & AsyncStorage & AI-generated and parent-created stories: id, title, text, tags, difficulty, approval flag. \\
+\hline
+Narration mode (\texttt{narration\_mode\_v1}) & AsyncStorage & User's preferred narration mode: \texttt{AI} or \texttt{Human}. \\
+\hline
+Library cache (\texttt{library\_stories\_cache\_v1}, \texttt{library\_cache\_timestamp\_v1}) & AsyncStorage & Cached library listing and cache freshness timestamp. \\
+\hline
+Story content cache (\texttt{story\_content\_v1\_\{id\}}) & AsyncStorage & Full story content per story ID. \\
+\hline
+ElevenLabs audio cache (\texttt{elevenlabs\_cache\_v1}) & AsyncStorage & Cached audio data (base64 + metadata) keyed by text and voice ID. \\
+\hline
+Parent recording index (\texttt{parent\_recordings\_v1}) & AsyncStorage & File URI index for parent narration recordings per story page. \\
+\hline
+Soft-deleted stories (\texttt{deleted\_stories\_v1}) & AsyncStorage & IDs of deleted stories, preventing re-seeding of removed content. \\
+\hline
+Onboarding flag (\texttt{onboarding\_done\_v1}) & AsyncStorage & Boolean indicating whether onboarding has been completed. \\
+\hline
+Voice recording files & expo-file-system (local) & Binary audio files for parent narrations, managed as local filesystem entries. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\subsection*{AsyncStorage Keys}
+
+AsyncStorage is a key-value store. Data is serialised to JSON before storage and deserialised on retrieval. All keys are defined centrally in \texttt{src/data/storage/storageKeys.ts} and include a version suffix (e.g., \texttt{\_v1}) to support future migrations. This convention prevents key collisions and makes the storage layout auditable from a single file.
+
+\subsection*{Expo SecureStore}
+
+Expo SecureStore provides access to the device's native secure storage (Keychain Services on iOS, Android Keystore System on Android). It is used for the parent's password hash. The password is hashed with \texttt{bcryptjs} at cost factor 10 and stored with a \texttt{v2:} prefix to distinguish it from a legacy Base64 encoding (\texttt{v1:}) used in an earlier version of the application. The service in \texttt{src/services/parentGateService.ts} automatically migrates legacy hashes to the secure bcrypt format on the first successful verification.
+
+\section{Backend Architecture}
+
+The backend is a Node.js/Express server located in the \texttt{backend/} directory. It runs on port 3001 by default, with the client resolving its address from the \texttt{EXPO\_PUBLIC\_API\_URL} environment variable (Android emulator fallback: \texttt{10.0.2.2:3001}; iOS simulator and web: \texttt{localhost:3001}). The server connects to a MySQL database via the Prisma ORM (\texttt{@prisma/client} \^{}5.13.0). Story generation and TTS routes are stateless and remain functional without a database connection; all other routes return HTTP~503 via a \texttt{dbRequired} middleware when MySQL is unavailable. The server retries the database connection every 30 seconds, allowing recovery without a restart.
+
+Parent accounts authenticate with email and password or an optional 4-digit PIN. On successful login, the server issues a JWT (via \texttt{jsonwebtoken}), which the client stores in \texttt{src/data/storage/authStorage.ts} and attaches as a \texttt{Bearer} token on subsequent requests. Passwords and PINs are bcrypt-hashed before storage in the \texttt{parents} table and are never returned in API responses.
+
+\begin{table}[H]
+\centering
+\caption{Backend API Routes}
+\label{tab:backend_routes}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{3.5cm}|>{\RaggedRight\arraybackslash}p{2cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Route Prefix} & \textbf{DB Required} & \textbf{Key Endpoints} \\
+\hline
+\texttt{/api/stories} & No (generate); Yes (CRUD) & \texttt{POST /generate} — AI story generation via GPT-4o-mini; \texttt{POST /suggest} — title suggestions; \texttt{GET /library} — library browsing; \texttt{GET /parent/all} — parent's saved stories. \\
+\hline
+\texttt{/api/tts} & No & \texttt{POST /generate} — ElevenLabs TTS; \texttt{POST /stream} — streamed TTS; \texttt{GET /voices} — voice list; \texttt{POST /clone-voice} — create cloned voice; \texttt{DELETE /clone-voice/:id} — delete cloned voice. \\
+\hline
+\texttt{/api/health} & No & \texttt{GET /} — server status and database connectivity flag. \\
+\hline
+\texttt{/api/analytics} & Degrades gracefully & \texttt{GET /} — anonymous aggregate daily statistics. \\
+\hline
+\texttt{/api/auth} & Yes & \texttt{POST /register}, \texttt{POST /login}, \texttt{POST /pin}, \texttt{GET /me}, \texttt{PATCH /pin}, \texttt{PATCH /password}. \\
+\hline
+\texttt{/api/children} & Yes & CRUD for child profiles: \texttt{POST /}, \texttt{GET /}, \texttt{GET /:id}, \texttt{PATCH /:id}, \texttt{DELETE /:id}. \\
+\hline
+\texttt{/api/approvals} & Yes & Story approval management per child. \\
+\hline
+\texttt{/api/sync} & Yes & Client-server data synchronisation. \\
+\hline
+\end{tabularx}
+\end{table}
+
+API keys for OpenAI and ElevenLabs are stored in the backend \texttt{.env} file and are never transmitted to or stored on the client.
+
+\section{External API Integration}
+
+ToggleTails integrates with two external AI services. Both integrations are mediated through the backend to ensure that API credentials are not bundled into the client application.
+
+\begin{table}[H]
+\centering
+\caption{External API Integration Summary}
+\label{tab:api_integration}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{3cm}|>{\RaggedRight\arraybackslash}p{3.5cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Service} & \textbf{Use Case} & \textbf{Integration Detail} \\
+\hline
+OpenAI GPT-4o-mini & AI story generation & The client submits child profile data and story parameters to \texttt{POST /api/stories/generate}. The backend constructs a chat completion request with reading-level constraints (Beginner: \textasciitilde100 words, ages 3--5; Intermediate: \textasciitilde300 words, ages 5--7; Advanced: \textasciitilde500 words, ages 7--10) and returns the generated story text. \\
+\hline
+ElevenLabs TTS API & AI narration (primary) & The client submits story text and a voice ID to \texttt{POST /api/tts/generate} or \texttt{/api/tts/stream}. The backend forwards the request using the \texttt{eleven\_multilingual\_v2} model and returns synthesised \texttt{audio/mpeg}, which is played via \texttt{expo-av}. \\
+\hline
+ElevenLabs Voice Cloning & Custom parent voice model & A parent-recorded audio file is submitted to \texttt{POST /api/tts/clone-voice} via multipart form. The backend forwards it to the ElevenLabs \texttt{/v1/voices/add} endpoint and returns the generated \texttt{voiceId}, which is stored locally and used in subsequent TTS requests. \\
+\hline
+expo-speech (on-device) & AI narration (fallback) & Invoked directly on the client when the ElevenLabs API is unreachable or returns an error. Provides on-device synthesis without a network request. \\
+\hline
+expo-speech-recognition & Read with Help mode & Performs on-device speech recognition to support word-level interaction during playback. Requires a native EAS build and is not available in Expo Go. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\subsection*{Narration Fallback Strategy}
+
+The narration system implements a two-tier fallback strategy. The active narration source is determined by \texttt{src/domain/services/narrationResolutionService.ts}, which takes the user's preferred mode (\texttt{AI} or \texttt{Human}) and whether a parent recording exists for the current page, and returns either \texttt{'tts'} or \texttt{'parent'}. Higher-level orchestration in \texttt{src/services/storyPlaybackService.ts} handles the fallback path: when an ElevenLabs request fails, the system transparently falls back to \texttt{expo-speech} for on-device synthesis without requiring any user action. If the backend story generation API is also unavailable, the client invokes \texttt{generateLocalStory()} in \texttt{src/domain/services/storyCreationService.ts}, which produces a story from structured narrative templates, ensuring story creation remains functional in fully offline conditions.
+
+\section{Asset Management}
+
+Static story assets are bundled with the application at build time and served from local storage, ensuring that the core library is available offline.
+
+\begin{table}[H]
+\centering
+\caption{Bundled Asset Inventory}
+\label{tab:assets}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{4cm}|>{\RaggedRight\arraybackslash}p{3cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Asset Type} & \textbf{Location} & \textbf{Description} \\
+\hline
+Bundled stories (manifest + content) & \texttt{assets/library/} & 50 stories across six genres (Animals, Adventure, Bedtime, Science, Values, Fantasy), defined in \texttt{manifest.json} (v2.0.0) with individual content files under \texttt{assets/library/stories/}. \\
+\hline
+UI images and icons & \texttt{assets/images/} & App icon, splash screen, and platform-specific icon variants. \\
+\hline
+\end{tabularx}
+\end{table}
+
+On first launch, \texttt{src/data/seeder/PreloadedSeeder.ts} seeds the bundled stories into AsyncStorage under the \texttt{stories\_v1} key, and \texttt{src/domain/services/storyApprovalService.ts} auto-approves them so they are immediately visible to the child. The seeder tracks the seeded version under \texttt{preloaded\_seeded\_version\_v1} to prevent duplicate seeding across sessions.
+
+\section{Security Design}
+
+Security considerations are addressed at multiple layers of the system rather than as a single point of enforcement.
+
+\begin{table}[H]
+\centering
+\caption{Security Controls by Layer}
+\label{tab:security}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\RaggedRight\arraybackslash}p{3.5cm}|>{\RaggedRight\arraybackslash}p{3.5cm}|>{\RaggedRight\arraybackslash}X|}
+\hline
+\textbf{Layer} & \textbf{Control} & \textbf{Implementation} \\
+\hline
+Client Credential Storage & bcrypt hashing + hardware keychain & \texttt{bcryptjs} hashes the parent password at cost factor 10 with a \texttt{v2:} prefix; Expo SecureStore persists it in the device hardware keychain, with AsyncStorage as a fallback. \\
+\hline
+Client Brute-Force Protection & Attempt rate limiting and lockout & Five consecutive failed verifications trigger a 30-second lockout enforced in \texttt{parentGateService.ts}; attempt count and lockout expiry are stored in AsyncStorage. \\
+\hline
+Backend Credential Storage & bcrypt hashing + JWT sessions & Passwords and PINs in the \texttt{parents} table are bcrypt-hashed and never returned to the client. Authenticated sessions use JWTs issued by \texttt{jsonwebtoken}. \\
+\hline
+API Key Protection & Server-side environment configuration & OpenAI and ElevenLabs API keys are stored in the backend \texttt{.env} file and never transmitted to or stored on the client. \\
+\hline
+Navigation-Level Access Gate & \texttt{parent-gate.tsx} & Credential verification is required before any parent-restricted route is rendered. \\
+\hline
+Feature-Level Access Control & \texttt{canAccess()} RBAC & The deny-by-default \texttt{canAccess(role, feature)} function in \texttt{src/domain/services/accessControl.ts} prevents accidental feature access through missing route guards. \\
+\hline
+Data Privacy & Local-only child data & Child profile data, reading history, favourites, and narration recordings are stored on-device only and are not transmitted to external servers. \\
+\hline
+\end{tabularx}
+\end{table}

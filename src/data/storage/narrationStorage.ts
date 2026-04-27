@@ -25,6 +25,8 @@ export type NarrationSettings = {
   parentVoiceLabel: ParentVoiceLabel;
   /** ElevenLabs voice ID created by cloning the parent's recorded voice */
   clonedVoiceId?: string;
+  /** When true, use the cloned voice as the primary narrator instead of the selected AI preset */
+  useClonedVoice?: boolean;
 };
 
 /** AI voice display metadata */
@@ -53,6 +55,7 @@ const DEFAULT_SETTINGS: NarrationSettings = {
   preferredSource: 'AI',
   aiVoiceId: 'Rachel',
   parentVoiceLabel: 'Parent',
+  useClonedVoice: false,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +88,7 @@ export async function getNarrationSettings(): Promise<NarrationSettings> {
       aiVoiceId: parsed.aiVoiceId ?? DEFAULT_SETTINGS.aiVoiceId,
       parentVoiceLabel: parsed.parentVoiceLabel ?? DEFAULT_SETTINGS.parentVoiceLabel,
       clonedVoiceId: parsed.clonedVoiceId,
+      useClonedVoice: parsed.useClonedVoice ?? false,
     };
   } catch (error) {
     console.error('getNarrationSettings:', normalizeError(error));

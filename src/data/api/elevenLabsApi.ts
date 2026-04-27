@@ -8,7 +8,7 @@
  * - Returns raw audio data for local caching
  */
 
-import { API_BASE_URL } from '../../config/api';
+import { TTS_API_BASE_URL } from '../../config/api';
 import { normalizeError } from '../../domain/services/errorService';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export type GenerateAudioResponse = GenerateAudioResult | GenerateAudioError;
 // API Endpoints
 // ─────────────────────────────────────────────────────────────────────────────
 
-const TTS_ENDPOINT = `${API_BASE_URL}/api/tts`;
+const TTS_ENDPOINT = `${TTS_API_BASE_URL}/api/tts`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API Functions
@@ -164,17 +164,9 @@ export async function generateAudio(
       contentType: contentType || 'audio/mpeg',
     };
   } catch (error) {
-    const errorMessage = normalizeError(error);
-
-    // Network errors should trigger fallback
-    const isNetworkError =
-      errorMessage.includes('Network') ||
-      errorMessage.includes('fetch') ||
-      errorMessage.includes('Failed to fetch');
-
     return {
       success: false,
-      error: errorMessage,
+      error: normalizeError(error),
       fallback: true,
     };
   }
@@ -250,6 +242,33 @@ export async function cloneVoice(
       voiceId: data.voiceId,
       previewUrl: data.previewUrl ?? null,
     };
+  } catch (error) {
+    return { success: false, error: normalizeError(error) };
+  }
+}
+
+/**
+ * Delete a previously cloned voice from ElevenLabs.
+ *
+ * @param voiceId - The ElevenLabs voice ID to delete
+ */
+export async function deleteClonedVoice(
+  voiceId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${TTS_ENDPOINT}/clone-voice/${voiceId}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: (data as any).error ?? `Server error: ${response.status}`,
+      };
+    }
+
+    return { success: true };
   } catch (error) {
     return { success: false, error: normalizeError(error) };
   }

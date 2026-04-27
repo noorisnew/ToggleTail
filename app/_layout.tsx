@@ -46,6 +46,8 @@ export default function RootLayout() {
           <Stack.Screen name="story-create" options={{ title: 'Create Story', headerShown: false }} />
           <Stack.Screen name="story-view" options={{ title: 'Story', headerShown: false }} />
           <Stack.Screen name="record-narration" options={{ title: 'Record Narration', headerShown: false }} />
+          <Stack.Screen name="recording-studio" options={{ title: 'Recording Studio', headerShown: false }} />
+          <Stack.Screen name="advanced-settings" options={{ title: 'Advanced Settings', headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

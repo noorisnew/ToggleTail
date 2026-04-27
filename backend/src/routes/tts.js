@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
+const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
+const REQUEST_TIMEOUT_MS = 20000;
+const HEALTH_CACHE_TTL_MS = 60000;
+
 // ElevenLabs voice IDs (optimized for children's storytelling)
 // Each voice is distinct — no duplicates. All are pre-made, human-sounding voices
 // from ElevenLabs' public library with high naturalness ratings.
@@ -19,21 +23,183 @@ const DEFAULT_VOICE = 'Rachel';
 // (eleven_turbo_v2_5 is faster but less natural for storytelling)
 const TTS_MODEL = 'eleven_multilingual_v2';
 
+let healthCache = {
+  checkedAt: 0,
+  result: null,
+};
+
+function getApiKey() {
+  return process.env.ELEVENLABS_API_KEY?.trim() || '';
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableStatus(status) {
+  return status === 429 || status >= 500;
+}
+
+function normalizeUpstreamError(text, status) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    return `ElevenLabs upstream returned status ${status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed?.detail?.message === 'string') {
+      return parsed.detail.message;
+    }
+    if (typeof parsed?.detail === 'string') {
+      return parsed.detail;
+    }
+    if (typeof parsed?.message === 'string') {
+      return parsed.message;
+    }
+    if (typeof parsed?.error === 'string') {
+      return parsed.error;
+    }
+  } catch {
+    // Non-JSON error payload.
+  }
+
+  return trimmed.slice(0, 300);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchWithRetry(url, options, retryCount = 1) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, options);
+
+      if (!response.ok && isRetriableStatus(response.status) && attempt < retryCount) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retryCount) {
+        throw error;
+      }
+      await sleep(400 * (attempt + 1));
+    }
+  }
+
+  throw lastError;
+}
+
+async function checkElevenLabsHealth(forceRefresh = false) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    healthCache.result &&
+    now - healthCache.checkedAt < HEALTH_CACHE_TTL_MS
+  ) {
+    return healthCache.result;
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    const result = {
+      available: false,
+      status: 'missing_api_key',
+      message: 'ElevenLabs API key not configured',
+      checkedAt: new Date(now).toISOString(),
+    };
+    healthCache = { checkedAt: now, result };
+    return result;
+  }
+
+  try {
+    const response = await fetchWithRetry(`${ELEVENLABS_API_BASE}/voices`, {
+      method: 'GET',
+      headers: {
+        'xi-api-key': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      const result = {
+        available: false,
+        status: 'upstream_error',
+        message: normalizeUpstreamError(errorText, response.status),
+        checkedAt: new Date(now).toISOString(),
+      };
+      healthCache = { checkedAt: now, result };
+      return result;
+    }
+
+    const result = {
+      available: true,
+      status: 'ok',
+      message: 'ElevenLabs is reachable',
+      checkedAt: new Date(now).toISOString(),
+    };
+    healthCache = { checkedAt: now, result };
+    return result;
+  } catch (error) {
+    const result = {
+      available: false,
+      status: error?.name === 'AbortError' ? 'timeout' : 'network_error',
+      message:
+        error?.name === 'AbortError'
+          ? 'Timed out reaching ElevenLabs'
+          : error?.message || 'Failed to reach ElevenLabs',
+      checkedAt: new Date(now).toISOString(),
+    };
+    healthCache = { checkedAt: now, result };
+    return result;
+  }
+}
+
 /**
  * GET /api/tts/voices
  * Get available voices for selection
  */
-router.get('/voices', (req, res) => {
+router.get('/voices', async (req, res) => {
   const voiceList = Object.entries(VOICES).map(([name, id]) => ({
     id,
     name,
     description: getVoiceDescription(name),
   }));
 
+  const health = await checkElevenLabsHealth();
+
   res.json({ 
     voices: voiceList,
     default: DEFAULT_VOICE,
-    available: !!process.env.ELEVENLABS_API_KEY,
+    available: health.available,
+    status: health.status,
+    message: health.message,
+    checkedAt: health.checkedAt,
+  });
+});
+
+router.get('/health', async (_req, res) => {
+  const health = await checkElevenLabsHealth(true);
+  res.status(health.available ? 200 : 503).json({
+    ...health,
+    defaultVoice: DEFAULT_VOICE,
+    voiceCount: Object.keys(VOICES).length,
   });
 });
 
@@ -66,7 +232,9 @@ router.post('/generate', async (req, res) => {
       return res.status(400).json({ error: 'Text is required' });
     }
 
-    if (!process.env.ELEVENLABS_API_KEY) {
+    const apiKey = getApiKey();
+
+    if (!apiKey) {
       return res.status(503).json({ 
         error: 'ElevenLabs API key not configured',
         fallback: true,
@@ -74,17 +242,18 @@ router.post('/generate', async (req, res) => {
       });
     }
 
-    const voiceId = VOICES[voiceName] || VOICES[DEFAULT_VOICE];
+    // Support preset names ("Rachel") and direct ElevenLabs voice IDs (e.g. cloned voices)
+    const voiceId = VOICES[voiceName] || voiceName || VOICES[DEFAULT_VOICE];
 
     // Call ElevenLabs API with optimized settings for storytelling
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+    const response = await fetchWithRetry(
+      `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}`,
       {
         method: 'POST',
         headers: {
           'Accept': 'audio/mpeg',
           'Content-Type': 'application/json',
-          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          'xi-api-key': apiKey,
         },
         body: JSON.stringify({
           text,
@@ -101,12 +270,24 @@ router.post('/generate', async (req, res) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('ElevenLabs error:', errorText);
+      const message = normalizeUpstreamError(errorText, response.status);
+      console.error('ElevenLabs error:', message);
       return res.status(response.status).json({ 
         error: 'Voice generation failed',
+        message,
         fallback: true,
       });
     }
+
+    healthCache = {
+      checkedAt: Date.now(),
+      result: {
+        available: true,
+        status: 'ok',
+        message: 'ElevenLabs is reachable',
+        checkedAt: new Date().toISOString(),
+      },
+    };
 
     // Stream audio back
     res.set({
@@ -119,9 +300,9 @@ router.post('/generate', async (req, res) => {
 
   } catch (error) {
     console.error('TTS generation error:', error.message);
-    res.status(500).json({ 
+    res.status(error?.name === 'AbortError' ? 504 : 500).json({ 
       error: 'Failed to generate speech',
-      message: error.message,
+      message: error?.name === 'AbortError' ? 'Timed out generating speech' : error.message,
       fallback: true,
     });
   }
@@ -135,23 +316,25 @@ router.post('/stream', async (req, res) => {
   try {
     const { text, voiceName = DEFAULT_VOICE } = req.body;
 
-    if (!process.env.ELEVENLABS_API_KEY) {
+    const apiKey = getApiKey();
+
+    if (!apiKey) {
       return res.status(503).json({ 
         error: 'ElevenLabs API key not configured',
         fallback: true,
       });
     }
 
-    const voiceId = VOICES[voiceName] || VOICES[DEFAULT_VOICE];
+    const voiceId = VOICES[voiceName] || voiceName || VOICES[DEFAULT_VOICE];
 
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+    const response = await fetchWithRetry(
+      `${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}/stream`,
       {
         method: 'POST',
         headers: {
           'Accept': 'audio/mpeg',
           'Content-Type': 'application/json',
-          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          'xi-api-key': apiKey,
         },
         body: JSON.stringify({
           text,
@@ -165,7 +348,12 @@ router.post('/stream', async (req, res) => {
     );
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Stream failed', fallback: true });
+      const errorText = await response.text();
+      return res.status(response.status).json({
+        error: 'Stream failed',
+        message: normalizeUpstreamError(errorText, response.status),
+        fallback: true,
+      });
     }
 
     res.set('Content-Type', 'audio/mpeg');
@@ -186,7 +374,11 @@ router.post('/stream', async (req, res) => {
 
   } catch (error) {
     console.error('TTS stream error:', error.message);
-    res.status(500).json({ error: 'Stream failed', fallback: true });
+    res.status(error?.name === 'AbortError' ? 504 : 500).json({
+      error: 'Stream failed',
+      message: error?.name === 'AbortError' ? 'Timed out streaming speech' : error.message,
+      fallback: true,
+    });
   }
 });
 

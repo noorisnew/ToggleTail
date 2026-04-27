@@ -2,8 +2,12 @@
  * API configuration for ToggleTail backend
  *
  * URL resolution order (first defined wins):
- *   1. EXPO_PUBLIC_API_URL env variable  — set in the root .env file
- *   2. Platform-specific dev fallback    — localhost for web, LAN IP for devices
+ *   1. EXPO_PUBLIC_API_URL env variable      — primary backend base URL
+ *   2. Platform-specific dev fallback        — localhost for web, emulator host for native
+ *
+ * TTS can optionally use a separate backend via EXPO_PUBLIC_TTS_API_URL.
+ * This is useful when the main deployed API is healthy but ElevenLabs must run
+ * against a local backend that holds the working key.
  *
  * To switch environments:
  *   - Development web  : set EXPO_PUBLIC_API_URL=http://localhost:3001
@@ -43,4 +47,16 @@ export const API_BASE_URL: string = (() => {
     return envUrl.trim();
   }
   return __DEV__ ? getDevFallbackUrl() : 'https://your-production-url.com';
+})();
+
+/**
+ * Resolved backend URL for ElevenLabs-only routes.
+ * Falls back to the primary API base URL when no dedicated TTS URL is set.
+ */
+export const TTS_API_BASE_URL: string = (() => {
+  const envUrl = process.env.EXPO_PUBLIC_TTS_API_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim();
+  }
+  return API_BASE_URL;
 })();

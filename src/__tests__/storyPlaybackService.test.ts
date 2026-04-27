@@ -382,7 +382,9 @@ describe('storyPlaybackService', () => {
           expect(mockPlayPageRecording).toHaveBeenCalledWith(
             'story-1',
             2,
-            expect.any(Function)
+            expect.any(Function),
+            undefined,
+            undefined
           );
         });
 
@@ -514,6 +516,51 @@ describe('storyPlaybackService', () => {
           ]);
           expect(callbacks.onParentComplete).not.toHaveBeenCalled();
         });
+      });
+    });
+
+    describe('cloned voice (voiceId arg)', () => {
+      it('passes voiceId to ElevenLabs in AI mode', async () => {
+        await playStoryPage(
+          'story-1', 0, 'Text.', 'AI', false, defaultTTSConfig, {}, 'cloned-voice-id'
+        );
+        expect(mockPlayElevenLabsAudio).toHaveBeenCalledWith(
+          'story-1', 0, 'Text.', 'cloned-voice-id', expect.any(Function)
+        );
+      });
+
+      it('uses clonedVoiceId (9th arg) as fallback in Human mode when parent recording fails', async () => {
+        mockPlayPageRecording.mockResolvedValue(false);
+        await playStoryPage(
+          'story-1', 0, 'Text.', 'Human', true, defaultTTSConfig, {},
+          'ai-voice-id',
+          'cloned-voice-id'
+        );
+        expect(mockPlayElevenLabsAudio).toHaveBeenCalledWith(
+          'story-1', 0, 'Text.', 'cloned-voice-id', expect.any(Function)
+        );
+      });
+
+      it('uses clonedVoiceId over voiceId in Human mode without recording', async () => {
+        await playStoryPage(
+          'story-1', 0, 'Text.', 'Human', false, defaultTTSConfig, {},
+          'ai-voice-id',
+          'cloned-voice-id'
+        );
+        expect(mockPlayElevenLabsAudio).toHaveBeenCalledWith(
+          'story-1', 0, 'Text.', 'cloned-voice-id', expect.any(Function)
+        );
+      });
+
+      it('falls back to voiceId when no clonedVoiceId in Human mode', async () => {
+        await playStoryPage(
+          'story-1', 0, 'Text.', 'Human', false, defaultTTSConfig, {},
+          'ai-voice-id',
+          undefined
+        );
+        expect(mockPlayElevenLabsAudio).toHaveBeenCalledWith(
+          'story-1', 0, 'Text.', 'ai-voice-id', expect.any(Function)
+        );
       });
     });
 

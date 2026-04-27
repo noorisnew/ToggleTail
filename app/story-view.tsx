@@ -142,6 +142,7 @@ export default function StoryViewScreen() {
   const [narrationMode, setNarrationMode] = useState<'AI' | 'Human'>('AI');
   const [aiVoiceId, setAiVoiceId] = useState<AIVoiceId>('Rachel');
   const [clonedVoiceId, setClonedVoiceId] = useState<string | undefined>();
+  const [useClonedVoice, setUseClonedVoice] = useState(false);
   const [parentVoiceLabel, setParentVoiceLabel] = useState<ParentVoiceLabel>('Parent');
   const [storyRecordings, setStoryRecordings] = useState<StoryRecordings | null>(null);
   const [availableNarrators, setAvailableNarrators] = useState<StoryRecordings[]>([]);
@@ -184,6 +185,7 @@ export default function StoryViewScreen() {
       setNarrationMode(settings.preferredSource);
       setAiVoiceId(settings.aiVoiceId);
       setClonedVoiceId(settings.clonedVoiceId);
+      setUseClonedVoice(settings.useClonedVoice ?? false);
       setParentVoiceLabel(settings.parentVoiceLabel);
     } catch (error) {
       console.log('Could not load narration settings:', error);
@@ -532,7 +534,10 @@ export default function StoryViewScreen() {
     try {
       // Load narration settings first so we can start pre-caching with the right voice
       const settings = await getNarrationSettings();
-      const voiceId = settings.aiVoiceId;
+      const voiceId =
+        (settings.useClonedVoice && settings.clonedVoiceId)
+          ? settings.clonedVoiceId
+          : settings.aiVoiceId;
       
       if (source === 'library') {
         const result = await getStoryById(id || '');
@@ -614,6 +619,9 @@ export default function StoryViewScreen() {
     }
   };
 
+  // Effective ElevenLabs voice: cloned voice when parent enabled it, otherwise the selected AI preset
+  const resolvedVoiceId = (useClonedVoice && clonedVoiceId) ? clonedVoiceId : aiVoiceId;
+
   const playCurrentPage = async () => {
     if (!pages[currentPage] || !story) return;
     const sessionNarrationMode = selectedMode === 'read-to-me' && selectedNarratorSlot ? 'Human' : narrationMode;
@@ -667,7 +675,7 @@ export default function StoryViewScreen() {
           
           // Pre-cache next 2 pages in background (fire-and-forget)
           if (currentPage < pages.length - 1 && story) {
-            precacheMultiplePages(story.id, pages, currentPage + 1, 2, aiVoiceId)
+            precacheMultiplePages(story.id, pages, currentPage + 1, 2, resolvedVoiceId)
               .catch(() => {}); // Ignore errors
           }
         },
@@ -687,7 +695,7 @@ export default function StoryViewScreen() {
           setIsSpeaking(false);
         },
       },
-      aiVoiceId,
+      resolvedVoiceId,
       clonedVoiceId,
       selectedNarratorSlot ?? undefined
     );
