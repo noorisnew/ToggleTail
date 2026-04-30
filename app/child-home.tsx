@@ -278,6 +278,8 @@ export default function ChildHomeScreen() {
   };
 
   // Convert library stories to display format
+  // Preloaded + generated/custom stories all live in AsyncStorage; open via local id only.
+  // isLibrary must be false so story-view loads from getStories(), not getStoryById (API).
   const allStories: DisplayStory[] = libraryStories.map((s, index) => ({
     id: s._id,
     title: s.title,
@@ -286,7 +288,7 @@ export default function ChildHomeScreen() {
     genre: categoryToGenre(s.category || 'Animals'),
     ageRange: (s.ageBand as AgeRange) || '3-5',
     readingLevel: s.readingLevel || 'Beginner',
-    isLibrary: true,
+    isLibrary: false,
     isFavorite: favorites.has(s._id),
     libraryData: s,
     emoji: s.emoji || CATEGORY_EMOJIS[s.category || 'Animals']?.[index % 6] || '📚',

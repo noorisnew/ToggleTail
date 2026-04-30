@@ -1,0 +1,435 @@
+{
+  "info": {
+    "_postman_id": "0d0d7b78-9a95-4d03-b0fb-04ef8aa58b33",
+    "name": "ToggleTail Backend API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET / (root)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/", "host": [ "{{baseUrl}}" ], "path": [ "" ] }
+          }
+        },
+        {
+          "name": "GET /api/health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/health", "host": [ "{{baseUrl}}" ], "path": [ "api", "health" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST /api/auth/register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"parent@example.com\",\n  \"password\": \"password123\",\n  \"pin\": \"1234\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "register" ] }
+          }
+        },
+        {
+          "name": "POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"parent@example.com\",\n  \"password\": \"password123\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "login" ] }
+          }
+        },
+        {
+          "name": "POST /api/auth/pin",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"parentId\": 1,\n  \"pin\": \"1234\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/pin", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "pin" ] }
+          }
+        },
+        {
+          "name": "GET /api/auth/me (Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "me" ] }
+          }
+        },
+        {
+          "name": "PATCH /api/auth/pin (Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"pin\": \"4321\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/pin", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "pin" ] }
+          }
+        },
+        {
+          "name": "PATCH /api/auth/password (Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"password123\",\n  \"newPassword\": \"password456\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/auth/password", "host": [ "{{baseUrl}}" ], "path": [ "api", "auth", "password" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Children (Bearer)",
+      "item": [
+        {
+          "name": "POST /api/children",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ava\",\n  \"age\": 6,\n  \"readingLevel\": \"Beginner\",\n  \"interests\": [\"Dinosaurs\", \"Ocean Adventures\"],\n  \"avatar\": \"Dino\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/children", "host": [ "{{baseUrl}}" ], "path": [ "api", "children" ] }
+          }
+        },
+        {
+          "name": "GET /api/children",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/children", "host": [ "{{baseUrl}}" ], "path": [ "api", "children" ] }
+          }
+        },
+        {
+          "name": "GET /api/children/:id",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/children/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "children", "1" ] }
+          }
+        },
+        {
+          "name": "PATCH /api/children/:id",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"age\": 7,\n  \"interests\": [\"Space & Robots\"]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/children/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "children", "1" ] }
+          }
+        },
+        {
+          "name": "DELETE /api/children/:id",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/children/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "children", "1" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stories",
+      "item": [
+        {
+          "name": "GET /api/stories/library",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/stories/library?limit=20&offset=0",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "api", "stories", "library" ],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/stories/suggest",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"interests\": [\"Dinosaurs\", \"Dragons & Magic\"],\n  \"count\": 3\n}" },
+            "url": { "raw": "{{baseUrl}}/api/stories/suggest", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories", "suggest" ] }
+          }
+        },
+        {
+          "name": "POST /api/stories/generate (optional Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"childName\": \"Ava\",\n  \"age\": 6,\n  \"readingLevel\": \"Beginner\",\n  \"interests\": [\"Dinosaurs\"],\n  \"storyLength\": \"Medium\",\n  \"agentStyle\": \"creative\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/stories/generate", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories", "generate" ] }
+          }
+        },
+        {
+          "name": "GET /api/stories/parent/all (Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/stories/parent/all", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories", "parent", "all" ] }
+          }
+        },
+        {
+          "name": "POST /api/stories (Bearer) - create story",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"The Tiny Comet\",\n  \"text\": \"Page one.\\n\\nPage two.\",\n  \"category\": \"General\",\n  \"readingLevel\": \"Beginner\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/stories", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories" ] }
+          }
+        },
+        {
+          "name": "GET /api/stories/:id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/stories/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories", "1" ] }
+          }
+        },
+        {
+          "name": "DELETE /api/stories/:id (Bearer)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/stories/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "stories", "1" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Approvals (Bearer)",
+      "item": [
+        {
+          "name": "POST /api/approvals (upsert)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"childId\": 1,\n  \"storyId\": 1,\n  \"isApproved\": true,\n  \"allowedModes\": [\"nativeTTS\", \"readAlone\"]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/approvals", "host": [ "{{baseUrl}}" ], "path": [ "api", "approvals" ] }
+          }
+        },
+        {
+          "name": "GET /api/approvals?childId=&isApproved=",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/approvals?childId=1&isApproved=true",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "api", "approvals" ],
+              "query": [
+                { "key": "childId", "value": "1" },
+                { "key": "isApproved", "value": "true" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/approvals/child/:childId",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/approvals/child/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "approvals", "child", "1" ] }
+          }
+        },
+        {
+          "name": "PATCH /api/approvals/:id/favorite",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"isFavorite\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/api/approvals/1/favorite", "host": [ "{{baseUrl}}" ], "path": [ "api", "approvals", "1", "favorite" ] }
+          }
+        },
+        {
+          "name": "DELETE /api/approvals/:id",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/approvals/1", "host": [ "{{baseUrl}}" ], "path": [ "api", "approvals", "1" ] }
+          }
+        },
+        {
+          "name": "POST /api/approvals/bulk",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"childId\": 1,\n  \"storyIds\": [1, 2, 3],\n  \"isApproved\": true,\n  \"allowedModes\": [\"nativeTTS\", \"readAlone\"]\n}" },
+            "url": { "raw": "{{baseUrl}}/api/approvals/bulk", "host": [ "{{baseUrl}}" ], "path": [ "api", "approvals", "bulk" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TTS",
+      "item": [
+        {
+          "name": "GET /api/tts/voices",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/tts/voices", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "voices" ] }
+          }
+        },
+        {
+          "name": "GET /api/tts/health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/tts/health", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "health" ] }
+          }
+        },
+        {
+          "name": "POST /api/tts/generate (audio/mpeg)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"Hello from ToggleTail!\",\n  \"voiceName\": \"Rachel\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tts/generate", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "generate" ] }
+          }
+        },
+        {
+          "name": "POST /api/tts/stream (audio/mpeg)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"This is a longer piece of text to stream.\",\n  \"voiceName\": \"Rachel\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tts/stream", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "stream" ] }
+          }
+        },
+        {
+          "name": "POST /api/tts/clone-voice (multipart/form-data)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "value": "Mom's Voice", "type": "text" },
+                { "key": "description", "value": "Cloned voice", "type": "text" },
+                { "key": "audio", "type": "file", "src": [] }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/tts/clone-voice", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "clone-voice" ] }
+          }
+        },
+        {
+          "name": "DELETE /api/tts/clone-voice/:voiceId",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/tts/clone-voice/VOICE_ID", "host": [ "{{baseUrl}}" ], "path": [ "api", "tts", "clone-voice", "VOICE_ID" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "POST /api/analytics/event",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"event\": \"story_opened\",\n  \"platform\": \"android\",\n  \"readingLevel\": \"Beginner\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/analytics/event", "host": [ "{{baseUrl}}" ], "path": [ "api", "analytics", "event" ] }
+          }
+        },
+        {
+          "name": "GET /api/analytics/stats?days=30",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/analytics/stats?days=30",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "api", "analytics", "stats" ],
+              "query": [{ "key": "days", "value": "30" }]
+            }
+          }
+        },
+        {
+          "name": "GET /api/analytics/features",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/analytics/features", "host": [ "{{baseUrl}}" ], "path": [ "api", "analytics", "features" ] }
+          }
+        },
+        {
+          "name": "POST /api/analytics/features",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"aiStoriesEnabled\",\n  \"enabled\": true,\n  \"description\": \"Enable AI story generation\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/analytics/features", "host": [ "{{baseUrl}}" ], "path": [ "api", "analytics", "features" ] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sync (Bearer)",
+      "item": [
+        {
+          "name": "GET /api/sync/pull?since=",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/sync/pull?since=1970-01-01T00:00:00.000Z",
+              "host": [ "{{baseUrl}}" ],
+              "path": [ "api", "sync", "pull" ],
+              "query": [{ "key": "since", "value": "1970-01-01T00:00:00.000Z" }]
+            }
+          }
+        },
+        {
+          "name": "POST /api/sync/push",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actions\": [\n    {\n      \"type\": \"UPDATE_CHILD\",\n      \"timestamp\": \"2026-01-01T00:00:00.000Z\",\n      \"payload\": {\n        \"childId\": 1,\n        \"updates\": { \"age\": 7 }\n      }\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/sync/push", "host": [ "{{baseUrl}}" ], "path": [ "api", "sync", "push" ] }
+          }
+        },
+        {
+          "name": "GET /api/sync/status",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/sync/status", "host": [ "{{baseUrl}}" ], "path": [ "api", "sync", "status" ] }
+          }
+        }
+      ]
+    }
+  ]
+}

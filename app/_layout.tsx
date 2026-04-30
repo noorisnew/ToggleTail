@@ -38,7 +38,7 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
+        <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="child-home" options={{ title: 'ToggleTail', headerShown: false }} />
           <Stack.Screen name="parent-gate" options={{ title: 'Parent Access' }} />

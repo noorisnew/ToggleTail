@@ -14,13 +14,12 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ToggleTail needs microphone access so we can hear you read stories aloud!",
         "NSSpeechRecognitionUsageDescription": "ToggleTail uses speech recognition to help you practice reading and provide feedback.",
-        "UIBackgroundModes": [
-          "audio"
-        ]
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
       "package": "com.toggletail.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#8B5CF6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

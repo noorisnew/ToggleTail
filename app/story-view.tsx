@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -125,6 +126,7 @@ export default function StoryViewScreen() {
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const flipAnim = useRef(new Animated.Value(0)).current;
   const autoPlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keepAwakeActiveRef = useRef(false);
   
   // Speech recognition state for "Help Me Read" mode
   const [isListening, setIsListening] = useState(false);
@@ -171,6 +173,46 @@ export default function StoryViewScreen() {
       loadNarrationSettings();
     }, [])
   );
+
+  // Keep the device awake while on the "Listen to Story" screen (read-to-me),
+  // and also while narration is actively playing/loading.
+  const shouldKeepAwake =
+    (!showModeModal && selectedMode === 'read-to-me') ||
+    isSpeaking ||
+    isLoadingAudio ||
+    isAutoPlaying;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncKeepAwake = async () => {
+      try {
+        if (shouldKeepAwake) {
+          if (!keepAwakeActiveRef.current) {
+            await activateKeepAwakeAsync();
+            if (!cancelled) {
+              keepAwakeActiveRef.current = true;
+            }
+          }
+        } else if (keepAwakeActiveRef.current) {
+          deactivateKeepAwake();
+          keepAwakeActiveRef.current = false;
+        }
+      } catch {
+        // Best-effort only; failure shouldn't block reading playback.
+      }
+    };
+
+    void syncKeepAwake();
+
+    return () => {
+      cancelled = true;
+      if (keepAwakeActiveRef.current) {
+        deactivateKeepAwake();
+        keepAwakeActiveRef.current = false;
+      }
+    };
+  }, [shouldKeepAwake]);
 
   // Check for parent recordings when story/page changes
   useEffect(() => {
