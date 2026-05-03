@@ -14,7 +14,9 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "ToggleTail needs microphone access so we can hear you read stories aloud!",
         "NSSpeechRecognitionUsageDescription": "ToggleTail uses speech recognition to help you practice reading and provide feedback.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -67,9 +69,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "bdf424c1-84aa-440d-90cb-76d09e41c851"
+        "projectId": "7d08ca8d-5ebc-45bb-be37-f179175307cd"
       }
     },
-    "owner": "noorisnews-organization"
+    "owner": "2noor4you"
   }
 }
