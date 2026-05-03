@@ -11,7 +11,6 @@ import {
     View
 } from 'react-native';
 import { BorderRadius, Colors, Spacing, Typography } from '../constants/design';
-import { signOut } from '../src/data/storage/authStorage';
 import { AvatarType, ChildProfile, getProfile, updateProfile } from '../src/data/storage/profileStorage';
 import { normalizeError } from '../src/domain/services/errorService';
 
@@ -67,28 +66,6 @@ export default function ProfileScreen() {
       console.error('handleAvatarChange:', normalizeError(error));
       Alert.alert('Error', 'Could not update avatar.');
     }
-  };
-
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out & Delete Local Account',
-      'This app stores accounts only on this device. Signing out erases this child profile, stories, recordings, and settings here, and you will not be able to log back in to recover them.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await signOut();
-            if (success) {
-              router.replace('/onboarding/welcome');
-            } else {
-              Alert.alert('Error', 'Could not sign out. Please try again.');
-            }
-          },
-        },
-      ]
-    );
   };
 
   const avatarEmoji = profile?.avatar ? AVATAR_EMOJIS[profile.avatar] : '🦄';
@@ -164,18 +141,6 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
-
-      {/* Always visible Sign Out button at bottom */}
-      <View style={styles.signOutSection}>
-        <TouchableOpacity
-          style={styles.signOutButtonMain}
-          onPress={handleSignOut}
-        >
-          <Text style={styles.signOutButtonIcon}>🚪</Text>
-          <Text style={styles.signOutButtonMainText}>Sign Out & Reset App</Text>
-        </TouchableOpacity>
-        <Text style={styles.signOutHint}>This permanently deletes this device-only account and restarts onboarding.</Text>
-      </View>
 
       {/* Avatar Picker Modal */}
       <Modal
@@ -371,38 +336,5 @@ const styles = StyleSheet.create({
     fontSize: Typography.sizes.body,
     color: Colors.textSecondary,
     fontWeight: Typography.weights.semibold,
-  },
-  
-  // Main Sign Out Section (always visible at bottom)
-  signOutSection: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing.xl,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  signOutButtonMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ef4444',
-    borderRadius: BorderRadius.button,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-  },
-  signOutButtonIcon: {
-    fontSize: 20,
-    marginRight: Spacing.sm,
-  },
-  signOutButtonMainText: {
-    fontSize: Typography.sizes.body,
-    fontWeight: Typography.weights.bold,
-    color: '#fff',
-  },
-  signOutHint: {
-    fontSize: Typography.sizes.small,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: Spacing.sm,
   },
 });

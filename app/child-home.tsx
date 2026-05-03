@@ -51,9 +51,12 @@ const AVATAR_EMOJIS: Record<AvatarType, string> = {
 };
 
 // Genre definitions with display info
-type GenreId = 'animals' | 'adventure' | 'bedtime' | 'science' | 'values' | 'fantasy';
+type BaseGenreId = 'animals' | 'adventure' | 'bedtime' | 'science' | 'values' | 'fantasy';
+type GenreId = BaseGenreId | 'ai';
 
-const GENRES: { id: GenreId; name: string; emoji: string; color: string }[] = [
+type GenreTab = { id: GenreId; name: string; emoji: string; color: string };
+
+const GENRES: GenreTab[] = [
   { id: 'animals', name: 'Animals', emoji: '🐾', color: '#86EFAC' },
   { id: 'adventure', name: 'Adventure', emoji: '🗺️', color: '#FBBF24' },
   { id: 'bedtime', name: 'Bedtime', emoji: '🌙', color: '#C4B5FD' },
@@ -62,8 +65,15 @@ const GENRES: { id: GenreId; name: string; emoji: string; color: string }[] = [
   { id: 'fantasy', name: 'Fantasy', emoji: '✨', color: '#D8B4FE' },
 ];
 
+const AI_GENRE: GenreTab = {
+  id: 'ai',
+  name: 'AI Stories',
+  emoji: '🤖',
+  color: '#A5B4FC',
+};
+
 // Map interests to genres for auto-selection
-const INTEREST_TO_GENRE: Record<InterestType, GenreId> = {
+const INTEREST_TO_GENRE: Record<InterestType, BaseGenreId> = {
   'Super Heroes': 'adventure',
   'Dragons & Magic': 'fantasy',
   'Fairy Tales': 'fantasy',
@@ -98,6 +108,11 @@ const CATEGORY_EMOJIS: Record<string, string[]> = {
   'Science': ['🔬', '🧪', '🔭', '🧲', '🦠', '⚗️'],
   'Values': ['💝', '🤝', '💕', '🌈', '❤️', '🙏'],
   'Fantasy': ['✨', '🔮', '🧙', '🦄', '🏰', '🐲'],
+  'Forest': ['🌲', '🍄', '🦉', '🪵', '🍃', '🦌'],
+  'Space': ['🚀', '🪐', '🌟', '👽', '☄️', '🌌'],
+  'Castle': ['🏰', '👑', '🛡️', '🐉', '⚔️', '🗝️'],
+  'Ocean': ['🌊', '🐠', '🐬', '🐙', '⛵', '🫧'],
+  'AI Stories': ['🤖', '✨', '🌈', '🪄', '💡', '🎨'],
 };
 
 type DisplayStory = {
@@ -157,6 +172,12 @@ export default function ChildHomeScreen() {
     }
   }, [profile?.interests, initialGenreSet]);
 
+  useEffect(() => {
+    if (selectedGenre === 'ai' && generatedStories.length === 0) {
+      setSelectedGenre('animals');
+    }
+  }, [generatedStories.length, selectedGenre]);
+
   const checkProfileAndRedirect = async () => {
     try {
       const data = await getProfile();
@@ -202,6 +223,11 @@ export default function ChildHomeScreen() {
       setLoadingStories(false);
     }
   };
+
+  const visibleGenres = useMemo(
+    () => (generatedStories.length > 0 ? [...GENRES, AI_GENRE] : GENRES),
+    [generatedStories.length]
+  );
 
   // Handle soft delete
   const handleSoftDelete = async (storyId: string) => {
@@ -285,7 +311,7 @@ export default function ChildHomeScreen() {
     title: s.title,
     text: s.text || '',
     category: s.category || 'Animals',
-    genre: categoryToGenre(s.category || 'Animals'),
+    genre: s.provider === 'generated' ? 'ai' : categoryToGenre(s.category || 'Animals'),
     ageRange: (s.ageBand as AgeRange) || '3-5',
     readingLevel: s.readingLevel || 'Beginner',
     isLibrary: false,
@@ -345,12 +371,12 @@ export default function ChildHomeScreen() {
 
   // Get story emoji with variety
   const getStoryEmoji = (category: string, index: number) => {
-    const emojis = CATEGORY_EMOJIS[category] || CATEGORY_EMOJIS['Animals'];
+    const emojis = CATEGORY_EMOJIS[category] || CATEGORY_EMOJIS['AI Stories'] || CATEGORY_EMOJIS['Animals'];
     return emojis[index % emojis.length];
   };
 
   const getGenreColor = (genreId: GenreId): string => {
-    return GENRES.find(g => g.id === genreId)?.color || '#86EFAC';
+    return visibleGenres.find(g => g.id === genreId)?.color || '#86EFAC';
   };
 
   const renderStoryCard = (item: DisplayStory, index: number) => {
@@ -428,7 +454,7 @@ export default function ChildHomeScreen() {
     );
   };
 
-  const renderGenreTab = (genre: typeof GENRES[0]) => {
+  const renderGenreTab = (genre: GenreTab) => {
     const isActive = selectedGenre === genre.id;
     
     return (
@@ -449,13 +475,13 @@ export default function ChildHomeScreen() {
   const getCurrentGenreName = () => {
     if (selectedGenre === 'favorites') return 'My Favorites';
     if (selectedGenre === 'library') return 'My Library';
-    return GENRES.find(g => g.id === selectedGenre)?.name || 'Stories';
+    return visibleGenres.find(g => g.id === selectedGenre)?.name || 'Stories';
   };
 
   const getCurrentGenreEmoji = () => {
     if (selectedGenre === 'favorites') return '❤️';
     if (selectedGenre === 'library') return '📚';
-    return GENRES.find(g => g.id === selectedGenre)?.emoji || '📚';
+    return visibleGenres.find(g => g.id === selectedGenre)?.emoji || '📚';
   };
 
   // Render collapsible library section
@@ -640,7 +666,7 @@ export default function ChildHomeScreen() {
             style={styles.genreScroll}
             contentContainerStyle={styles.genreScrollContent}
           >
-            {GENRES.map(renderGenreTab)}
+            {visibleGenres.map(renderGenreTab)}
           </ScrollView>
         )}
 
@@ -775,10 +801,12 @@ export default function ChildHomeScreen() {
               {/* Empty state if no stories in genre */}
               {forYou.length === 0 && younger.length === 0 && older.length === 0 && (
                 <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyEmoji}>📚</Text>
+                  <Text style={styles.emptyEmoji}>{selectedGenre === 'ai' ? '🤖' : '📚'}</Text>
                   <Text style={styles.emptyText}>No stories found!</Text>
                   <Text style={styles.emptySubtext}>
-                    Try selecting a different genre.
+                    {selectedGenre === 'ai'
+                      ? 'Ask a parent to create an AI story for you.'
+                      : 'Try selecting a different genre.'}
                   </Text>
                 </View>
               )}

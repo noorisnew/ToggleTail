@@ -43,11 +43,11 @@ export default function RootLayout() {
           <Stack.Screen name="child-home" options={{ title: 'ToggleTail', headerShown: false }} />
           <Stack.Screen name="parent-gate" options={{ title: 'Parent Access' }} />
           <Stack.Screen name="parent-home" options={{ title: 'Parent Dashboard', headerShown: false }} />
+          <Stack.Screen name="parent-settings" options={{ title: 'Parent Settings', headerShown: false }} />
           <Stack.Screen name="story-create" options={{ title: 'Create Story', headerShown: false }} />
           <Stack.Screen name="story-view" options={{ title: 'Story', headerShown: false }} />
           <Stack.Screen name="record-narration" options={{ title: 'Record Narration', headerShown: false }} />
           <Stack.Screen name="recording-studio" options={{ title: 'Recording Studio', headerShown: false }} />
-          <Stack.Screen name="advanced-settings" options={{ title: 'Advanced Settings', headerShown: false }} />
           <Stack.Screen name="onboarding" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

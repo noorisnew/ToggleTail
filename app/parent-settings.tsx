@@ -22,8 +22,6 @@ import {
     NarrationSettings,
     saveNarrationSettings,
 } from '../src/data/storage/narrationStorage';
-import { getStories, Story, updateStory } from '../src/data/storage/storyStorage';
-import { isPreloadedStory } from '../src/data/seeder/index';
 import {
     playElevenLabsAudio,
     stopElevenLabsPlayback,
@@ -39,8 +37,6 @@ const AI_VOICE_PREVIEWS: Record<AIVoiceId, { sample: string; rate: number; pitch
   Sarah:   { sample: 'Hi! I am Sarah, bright and lively for every story adventure.',          rate: 1.0,  pitch: 1.12 },
 };
 
-type LibTab = 'preloaded' | 'ai' | 'pending';
-
 export default function ParentSettingsScreen() {
   const router = useRouter();
 
@@ -49,19 +45,11 @@ export default function ParentSettingsScreen() {
   const [previewingVoiceId, setPreviewingVoiceId] = useState<AIVoiceId | null>(null);
   const [isPreviewingClone, setIsPreviewingClone] = useState(false);
 
-  // Library
-  const [stories, setStories]   = useState<Story[]>([]);
-  const [libTab, setLibTab]     = useState<LibTab>('preloaded');
-
   useFocusEffect(useCallback(() => { loadAll(); }, []));
 
   const loadAll = async () => {
-    const [narration, allStories] = await Promise.all([
-      getNarrationSettings(),
-      getStories(),
-    ]);
+    const narration = await getNarrationSettings();
     setNarrationSettings(narration);
-    setStories(allStories);
   };
 
   // ── Narration helpers ───────────────────────────────────────────────────────
@@ -146,31 +134,12 @@ export default function ParentSettingsScreen() {
     );
   };
 
-  // ── Library helpers ─────────────────────────────────────────────────────────
-
-  const filteredStories = (): Story[] => {
-    if (libTab === 'preloaded') return stories.filter(s => isPreloadedStory(s) && s.approved);
-    if (libTab === 'ai')        return stories.filter(s => !isPreloadedStory(s) && s.approved);
-    return stories.filter(s => !s.approved);
-  };
-
-  const handleToggleApproval = async (story: Story) => {
-    const updated = await updateStory(story.id, { approved: !story.approved });
-    if (updated) setStories(prev => prev.map(s => s.id === story.id ? updated : s));
-  };
-
   // ── Active voice logic ──────────────────────────────────────────────────────
 
   const isAIVoiceActive = (voiceId: AIVoiceId) =>
     narrationSettings?.aiVoiceId === voiceId && !narrationSettings.useClonedVoice;
 
   const isCloneActive = () => !!narrationSettings?.useClonedVoice && !!narrationSettings?.clonedVoiceId;
-
-  const libCounts = {
-    preloaded: stories.filter(s => isPreloadedStory(s) && s.approved).length,
-    ai:        stories.filter(s => !isPreloadedStory(s) && s.approved).length,
-    pending:   stories.filter(s => !s.approved).length,
-  };
 
   if (!narrationSettings) {
     return (
@@ -286,6 +255,12 @@ export default function ParentSettingsScreen() {
             )}
           </ScrollView>
 
+          <View style={styles.voiceCloneNotice}>
+            <Text style={styles.voiceCloneNoticeText}>
+              Currently, to keep the app free, we can only offer 1 voice clone at a time.
+            </Text>
+          </View>
+
           {/* Narration mode toggle — page-by-page recordings vs AI */}
           <View style={styles.modeRow}>
             <View style={styles.modeInfo}>
@@ -301,29 +276,11 @@ export default function ParentSettingsScreen() {
           </View>
         </View>
 
-        {/* ═══════════════════════════════════════════════════════════════════
-            CREATE
-        ═══════════════════════════════════════════════════════════════════ */}
         <View style={styles.section}>
           <View style={styles.sectionLabelRow}>
-            <Text style={styles.sectionEmoji}>⚡</Text>
-            <Text style={styles.sectionLabel}>Create</Text>
+            <Text style={styles.sectionEmoji}>🎙️</Text>
+            <Text style={styles.sectionLabel}>Voice Tools</Text>
           </View>
-
-          <TouchableOpacity
-            style={styles.createCard}
-            onPress={() => router.push('/story-create')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.createCardLeft}>
-              <Text style={styles.createCardEmoji}>📖</Text>
-              <View>
-                <Text style={styles.createCardTitle}>Your Own Story</Text>
-                <Text style={styles.createCardDesc}>Generate a custom story with AI</Text>
-              </View>
-            </View>
-            <Text style={styles.createCardArrow}>→</Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.createCard}
@@ -340,100 +297,6 @@ export default function ParentSettingsScreen() {
               </View>
             </View>
             <Text style={styles.createCardArrow}>→</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            MANAGE LIBRARY
-        ═══════════════════════════════════════════════════════════════════ */}
-        <View style={styles.section}>
-          <View style={styles.sectionLabelRow}>
-            <Text style={styles.sectionEmoji}>📚</Text>
-            <Text style={styles.sectionLabel}>Manage Library</Text>
-          </View>
-
-          {/* Tabs */}
-          <View style={styles.tabRow}>
-            {([
-              { key: 'preloaded', label: 'Preloaded', count: libCounts.preloaded },
-              { key: 'ai',        label: 'AI Stories', count: libCounts.ai },
-              { key: 'pending',   label: 'Pending',    count: libCounts.pending },
-            ] as { key: LibTab; label: string; count: number }[]).map(tab => (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.tab, libTab === tab.key && styles.tabActive]}
-                onPress={() => setLibTab(tab.key)}
-              >
-                <Text style={[styles.tabText, libTab === tab.key && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
-                {tab.count > 0 && (
-                  <View style={[styles.tabBadge, libTab === tab.key && styles.tabBadgeActive]}>
-                    <Text style={[styles.tabBadgeText, libTab === tab.key && styles.tabBadgeTextActive]}>
-                      {tab.count}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Story list */}
-          <View style={styles.storyList}>
-            {filteredStories().length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyEmoji}>
-                  {libTab === 'preloaded' ? '📚' : libTab === 'ai' ? '🤖' : '⏳'}
-                </Text>
-                <Text style={styles.emptyText}>
-                  {libTab === 'preloaded' ? 'No preloaded stories found'
-                   : libTab === 'ai' ? 'No AI-generated stories yet'
-                   : 'No pending stories'}
-                </Text>
-              </View>
-            ) : (
-              filteredStories().map(story => (
-                <View key={story.id} style={styles.storyRow}>
-                  <View style={styles.storyInfo}>
-                    <Text style={styles.storyTitle} numberOfLines={1}>{story.title}</Text>
-                    <Text style={styles.storyMeta}>
-                      {story.difficulty} · {story.tags?.slice(0, 2).join(', ')}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.approveToggle, story.approved && styles.approveToggleOn]}
-                    onPress={() => handleToggleApproval(story)}
-                  >
-                    <Text style={[styles.approveToggleText, story.approved && styles.approveToggleTextOn]}>
-                      {story.approved ? '✓ On' : 'Off'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </View>
-        </View>
-
-        {/* ═══════════════════════════════════════════════════════════════════
-            BOTTOM BUTTONS
-        ═══════════════════════════════════════════════════════════════════ */}
-        <View style={styles.bottomRow}>
-          <TouchableOpacity
-            style={styles.bottomBtn}
-            onPress={() => router.push('/advanced-settings')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.bottomBtnEmoji}>⚙️</Text>
-            <Text style={styles.bottomBtnText}>Advanced</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.bottomBtn}
-            onPress={() => router.push('/parent-home')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.bottomBtnEmoji}>📋</Text>
-            <Text style={styles.bottomBtnText}>Logs</Text>
           </TouchableOpacity>
         </View>
 
@@ -532,6 +395,22 @@ const styles = StyleSheet.create({
   addVoiceName: { fontSize: 13, fontWeight: '700', color: '#7C3AED', textAlign: 'center' },
   addVoiceDesc: { fontSize: 10, color: '#A78BFA', textAlign: 'center', lineHeight: 13 },
 
+  voiceCloneNotice: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  voiceCloneNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+
   // Mode toggle
   modeRow: {
     flexDirection: 'row',
@@ -564,78 +443,4 @@ const styles = StyleSheet.create({
   createCardDesc: { fontSize: 12, color: '#6B7280', marginTop: 2 },
   createCardArrow: { fontSize: 18, color: '#9CA3AF', fontWeight: '300' },
 
-  // ── Library ───────────────────────────────────────────────────────────────
-  tabRow: {
-    flexDirection: 'row',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 12,
-    gap: 2,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 5,
-  },
-  tabActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
-  tabText: { fontSize: 12, fontWeight: '600', color: '#9CA3AF' },
-  tabTextActive: { color: '#111827' },
-  tabBadge: { backgroundColor: '#E5E7EB', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
-  tabBadgeActive: { backgroundColor: '#EDE9FE' },
-  tabBadgeText: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
-  tabBadgeTextActive: { color: '#7C3AED' },
-
-  storyList: { gap: 8 },
-  emptyState: { alignItems: 'center', paddingVertical: 24 },
-  emptyEmoji: { fontSize: 36, marginBottom: 8 },
-  emptyText: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
-
-  storyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  storyInfo: { flex: 1, paddingRight: 8 },
-  storyTitle: { fontSize: 14, fontWeight: '600', color: '#111827' },
-  storyMeta: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
-  approveToggle: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 10, backgroundColor: '#F3F4F6',
-    borderWidth: 1, borderColor: '#E5E7EB',
-  },
-  approveToggleOn: { backgroundColor: '#F0FDF4', borderColor: '#22C55E' },
-  approveToggleText: { fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
-  approveToggleTextOn: { color: '#16A34A' },
-
-  // ── Bottom row ─────────────────────────────────────────────────────────────
-  bottomRow: { flexDirection: 'row', gap: 12 },
-  bottomBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingVertical: 16,
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  bottomBtnEmoji: { fontSize: 18 },
-  bottomBtnText: { fontSize: 15, fontWeight: '700', color: '#374151' },
 });
