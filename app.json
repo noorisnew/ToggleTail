@@ -12,6 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.toggletail.app",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "ToggleTail needs microphone access so we can hear you read stories aloud!",
         "NSSpeechRecognitionUsageDescription": "ToggleTail uses speech recognition to help you practice reading and provide feedback.",
         "UIBackgroundModes": [
