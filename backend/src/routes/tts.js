@@ -19,9 +19,9 @@ const VOICES = {
 // Default voice for children's stories (warm and engaging)
 const DEFAULT_VOICE = 'Rachel';
 
-// eleven_multilingual_v2 — highest naturalness / most human-sounding quality
-// (eleven_turbo_v2_5 is faster but less natural for storytelling)
-const TTS_MODEL = 'eleven_multilingual_v2';
+// Use the lower-cost flash model so story playback still works when the
+// ElevenLabs account is low on credits.
+const TTS_MODEL = 'eleven_flash_v2_5';
 
 let healthCache = {
   checkedAt: 0,

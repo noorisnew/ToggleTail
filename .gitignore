@@ -40,6 +40,7 @@ app-example
 
 # generated native folders
 /ios
+/android
 
 # Commit the generated Android project, but keep machine-specific and sensitive files ignored.
 android/local.properties

@@ -21,7 +21,6 @@
     },
     "android": {
       "package": "com.toggletail.app",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#8B5CF6",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

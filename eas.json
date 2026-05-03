@@ -14,7 +14,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://192.168.1.37:3001"
+        "EXPO_PUBLIC_API_URL": "http://192.168.1.37:3001",
+        "EXPO_PUBLIC_TTS_API_URL": "http://192.168.1.37:3001"
       }
     },
     "preview": {
@@ -26,13 +27,15 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://toggletail-api-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://toggletail-production.up.railway.app",
+        "EXPO_PUBLIC_TTS_API_URL": "https://toggletail-production.up.railway.app"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://toggletail-api-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://toggletail-production.up.railway.app",
+        "EXPO_PUBLIC_TTS_API_URL": "https://toggletail-production.up.railway.app"
       }
     }
   },
